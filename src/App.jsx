@@ -427,7 +427,7 @@ function WeeklyCalendar(p){
     try{
       var r=await fetch("/api/slack/sync-messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({})});
       var d=await r.json();
-      setSlackSt(d.ok?"synced":"error");
+      if(d.ok){setSlackSt(d.updated>0?"synced":"synced-nochange"); if(d.debug&&d.debug.length) console.warn("[sync]",d.debug);}else{setSlackSt("error"); console.error("[sync error]",d);}
     }catch(e){setSlackSt("error");}
   }
   async function confirmRequest(requestId){
@@ -459,7 +459,7 @@ function WeeklyCalendar(p){
         <div style={{fontSize:16,fontWeight:600,color:M.onSurf}}>주간 상담 일정</div>
         <div style={{display:"flex",alignItems:"center",gap:12}}>
           {slackSt==="idle"&&<button onClick={function(){setSlackSt("confirm");}} style={{padding:"4px 12px",borderRadius:6,border:"1px solid "+M.primary,background:M.primaryCont,color:M.primary,cursor:"pointer",fontSize:13,fontFamily:"'Noto Sans KR',system-ui,sans-serif"}}>슬랙에 미팅 일정 보내기</button>}
-          {(slackSt==="idle"||slackSt==="synced"||slackSt==="syncing")&&<button onClick={function(){syncSlackMessages();}} disabled={slackSt==="syncing"} style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+M.outlineVar,background:"transparent",color:M.onSurfVar,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>{slackSt==="syncing"?"동기화 중...":slackSt==="synced"?"✅ 동기화됨":"🔄 버튼 동기화"}</button>}
+          {(slackSt==="idle"||slackSt==="synced"||slackSt==="synced-nochange"||slackSt==="syncing")&&<button onClick={function(){syncSlackMessages();}} disabled={slackSt==="syncing"} style={{padding:"4px 10px",borderRadius:6,border:"1px solid "+M.outlineVar,background:"transparent",color:M.onSurfVar,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>{slackSt==="syncing"?"동기화 중...":slackSt==="synced"?"✅ 동기화됨":slackSt==="synced-nochange"?"✅ 변경 없음":"🔄 버튼 동기화"}</button>}
           {slackSt==="confirm"&&<div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
             <span style={{fontSize:13,color:M.onSurfVar,whiteSpace:"nowrap"}}>전송 대상:</span>
             <input value={threadUrl} onChange={function(e){setThreadUrl(e.target.value);}} placeholder="스레드 URL (선택)" style={{padding:"3px 8px",borderRadius:6,border:"1px solid "+M.outlineVar,background:M.surface,color:M.onSurf,fontSize:12,width:160,fontFamily:"inherit",outline:"none"}}/>

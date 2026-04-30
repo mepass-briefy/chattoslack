@@ -484,34 +484,41 @@ export function setupSlackSend(app) {
   app.post("/api/slack/sync-messages", async (req, res) => {
     if (!BOT_TOKEN()) return res.status(500).json({ error: "SLACK_BOT_TOKEN 미설정" });
 
-    // 확정된 슬롯 수집 (slackAvailable 아닌 것)
+    // 확정된 슬롯 수집 (Slack 확정 항목만: note에 "Slack" 포함)
     const allScheds = kvScan("schedule:");
     const confirmed = [];
     for (const { value } of allScheds) {
       if (!Array.isArray(value)) continue;
       for (const s of value) {
-        if (!s.slackAvailable && s.date && s.start)
+        if (!s.slackAvailable && s.date && s.start && s.note?.includes("Slack"))
           confirmed.push({ date: s.date, hour: parseInt(s.start) });
       }
     }
-    if (!confirmed.length) return res.json({ ok: true, updated: 0, message: "확정된 일정 없음" });
+    console.log("[Sync] confirmed slots:", confirmed);
+    if (!confirmed.length) return res.json({ ok: true, updated: 0, message: "Slack 확정 일정 없음" });
 
     // 스캔할 채널: 저장된 것 + 기본 채널
     const channels = new Set();
     for (const { value } of kvScan("slackMsg:")) { if (value?.channel) channels.add(value.channel); }
     if (CHANNEL_ID()) channels.add(CHANNEL_ID());
+    console.log("[Sync] channels to scan:", [...channels]);
 
+    const debug = [];
     let updated = 0;
+
     for (const channelId of channels) {
       const history = await slackAPI("conversations.history", { channel: channelId, limit: 100 });
-      if (!history.ok) continue;
+      console.log("[Sync] history for", channelId, "ok:", history.ok, "error:", history.error);
+      if (!history.ok) { debug.push({ channelId, error: history.error }); continue; }
 
-      const botMsgs = (history.messages || []).filter(m =>
-        m.bot_id && Array.isArray(m.blocks) &&
+      // bot_id 여부 무관하게 slot__ 버튼이 있는 메시지 모두 대상
+      const slotMsgs = (history.messages || []).filter(m =>
+        Array.isArray(m.blocks) &&
         m.blocks.some(b => b.type === "actions" && b.elements?.some(el => el.action_id?.startsWith("slot__")))
       );
+      console.log("[Sync] slot messages found:", slotMsgs.length);
 
-      for (const msg of botMsgs) {
+      for (const msg of slotMsgs) {
         let blocks = msg.blocks;
         let changed = false;
         for (const { date, hour } of confirmed) {
@@ -520,13 +527,16 @@ export function setupSlackSend(app) {
         }
         if (!changed) continue;
         const r = await slackAPI("chat.update", { channel: channelId, ts: msg.ts, blocks, text: "로빈의 미팅 가능 시간" });
+        console.log("[Sync] chat.update ts:", msg.ts, "ok:", r.ok, "error:", r.error);
         if (r.ok) {
           kvSet(`slackMsg:${channelId}:${msg.ts.replace(".", "_")}`, { channel: channelId, ts: msg.ts, blocks });
           updated++;
+        } else {
+          debug.push({ channelId, ts: msg.ts, updateError: r.error });
         }
       }
     }
-    res.json({ ok: true, updated });
+    res.json({ ok: true, updated, debug });
   });
 }
 
