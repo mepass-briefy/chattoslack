@@ -1214,29 +1214,27 @@ function ConsultingTab(p){
   async function handleFileUpload(file){
     if(!file) return;
     var ext=file.name.split(".").pop().toLowerCase();
+    var textTypes=["txt","md"];
+    var serverTypes=["docx","pptx","ppt","pdf","png","jpg","jpeg","gif","webp"];
+    if(!textTypes.includes(ext)&&!serverTypes.includes(ext)){setFileSt("unsupported"); return;}
     setFileSt("loading");
-    try{
-      if(ext==="txt"||ext==="md"){
-        var reader=new FileReader();
-        reader.onload=function(ev){setNF("content",ev.target.result); setFileSt("done");};
-        reader.onerror=function(){setFileSt("error");};
-        reader.readAsText(file,"utf-8"); return;
-      }
-      if(ext==="docx"){
-        var reader2=new FileReader();
-        reader2.onload=async function(ev){
-          try{
-            var b64=ev.target.result.split(",")[1];
-            var r=await fetch("/api/extract-text",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({filename:file.name,content:b64})});
-            var d=await r.json();
-            if(d.text){setNF("content",d.text); setFileSt("done");}else{setFileSt("error");}
-          }catch(e){setFileSt("error");}
-        };
-        reader2.onerror=function(){setFileSt("error");};
-        reader2.readAsDataURL(file); return;
-      }
-      setFileSt("unsupported");
-    }catch(e){setFileSt("error");}
+    if(textTypes.includes(ext)){
+      var reader=new FileReader();
+      reader.onload=function(ev){setNF("content",ev.target.result); setFileSt("done");};
+      reader.onerror=function(){setFileSt("error");};
+      reader.readAsText(file,"utf-8"); return;
+    }
+    var reader2=new FileReader();
+    reader2.onload=async function(ev){
+      try{
+        var b64=ev.target.result.split(",")[1];
+        var r=await fetch("/api/extract-text",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({filename:file.name,content:b64})});
+        var d=await r.json();
+        if(d.text){setNF("content",d.text); setFileSt("done");}else{setFileSt("error"); console.error(d.error);}
+      }catch(e){setFileSt("error");}
+    };
+    reader2.onerror=function(){setFileSt("error");};
+    reader2.readAsDataURL(file);
   }
   async function addNote(){
     if(!noteForm.content.trim())return; setSaving(true);
@@ -1376,7 +1374,7 @@ function ConsultingTab(p){
         footer={<><Btn variant="ghost" onClick={function(){setShowAdd(false);}}>취소</Btn><Btn onClick={addNote} disabled={saving||!noteForm.content.trim()}>{saving?<Spinner/>:"저장"}</Btn></>}>
         <Inp label="제목" value={noteForm.title} onChange={function(e){setNF("title",e.target.value);}} placeholder="1차 미팅"/>
         <Inp label="날짜" type="date" value={noteForm.date} onChange={function(e){setNF("date",e.target.value);}}/>
-        <div style={{marginBottom:6}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}><span style={{fontSize:12,fontWeight:600,color:M.onSurfVar}}>내용 <span style={{color:M.error}}>*</span></span><label style={{display:"flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:6,border:"1px solid "+M.outlineVar,cursor:"pointer",fontSize:12,color:fileSt==="done"?M.success:M.onSurfVar,background:M.scHi}}><span>{fileSt==="loading"?"불러오는 중...":fileSt==="done"?"✅ 파일 적용됨":fileSt==="unsupported"?"⚠️ 미지원 형식":fileSt==="error"?"❌ 오류":"📎 파일 불러오기"}</span><input type="file" accept=".txt,.md,.docx" style={{display:"none"}} onChange={function(e){setFileSt(""); handleFileUpload(e.target.files[0]); e.target.value="";}}/></label></div><textarea value={noteForm.content} onChange={function(e){setNF("content",e.target.value);}} rows={8} placeholder="미팅 내용, 고객 발언, 논의 사항을 자유롭게 입력하세요" style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid "+M.outlineVar,background:M.surface,color:M.onSurf,fontSize:13,fontFamily:"inherit",resize:"vertical",outline:"none",boxSizing:"border-box",lineHeight:1.6}}/></div>
+        <div style={{marginBottom:6}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}><span style={{fontSize:12,fontWeight:600,color:M.onSurfVar}}>내용 <span style={{color:M.error}}>*</span></span><label style={{display:"flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:6,border:"1px solid "+M.outlineVar,cursor:"pointer",fontSize:12,color:fileSt==="done"?M.success:M.onSurfVar,background:M.scHi}}><span>{fileSt==="loading"?"불러오는 중...":fileSt==="done"?"✅ 파일 적용됨":fileSt==="unsupported"?"⚠️ 미지원 형식":fileSt==="error"?"❌ 오류":"📎 파일 불러오기"}</span><input type="file" accept=".txt,.md,.docx,.pptx,.ppt,.pdf,.png,.jpg,.jpeg,.gif,.webp" style={{display:"none"}} onChange={function(e){setFileSt(""); handleFileUpload(e.target.files[0]); e.target.value="";}}/></label></div><textarea value={noteForm.content} onChange={function(e){setNF("content",e.target.value);}} rows={8} placeholder="미팅 내용, 고객 발언, 논의 사항을 자유롭게 입력하세요" style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid "+M.outlineVar,background:M.surface,color:M.onSurf,fontSize:13,fontFamily:"inherit",resize:"vertical",outline:"none",boxSizing:"border-box",lineHeight:1.6}}/></div>
       </Modal>
     </div>
   );

@@ -50,19 +50,58 @@ app.delete("/api/kv/:key", (req, res) => {
   res.json({ ok: true });
 });
 
-/* ── 파일 텍스트 추출 (docx) ─────────────────────────────────── */
+/* ── 파일 텍스트 추출 ────────────────────────────────────────── */
+const IMAGE_TYPES = { png:"image/png", jpg:"image/jpeg", jpeg:"image/jpeg", gif:"image/gif", webp:"image/webp" };
+
+async function callClaudeFile(content, mediaType, isDoc) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey || apiKey === "여기에_API_키_입력") throw new Error("ANTHROPIC_API_KEY 설정 필요");
+  const block = isDoc
+    ? { type:"document", source:{ type:"base64", media_type: mediaType, data: content } }
+    : { type:"image",    source:{ type:"base64", media_type: mediaType, data: content } };
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type":"application/json", "x-api-key": apiKey, "anthropic-version":"2023-06-01" },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6", max_tokens: 4096,
+      messages: [{ role:"user", content:[block,
+        { type:"text", text: isDoc
+          ? "이 문서의 텍스트 내용을 원본 구조를 유지하며 그대로 추출해주세요."
+          : "이 이미지에 있는 텍스트와 내용을 모두 추출해주세요. 표·메모·필기 포함." }
+      ]}]
+    })
+  });
+  const data = await r.json();
+  if (data.error) throw new Error(data.error.message);
+  return (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("\n");
+}
+
 app.post("/api/extract-text", async (req, res) => {
-  const { filename, content } = req.body; // content: base64
+  const { filename, content } = req.body;
   if (!filename || !content) return res.status(400).json({ error: "filename/content 필요" });
   const ext = filename.split(".").pop().toLowerCase();
   try {
     if (ext === "docx") {
       const mammoth = await import("mammoth");
-      const buffer = Buffer.from(content, "base64");
-      const result = await mammoth.extractRawText({ buffer });
+      const result = await mammoth.extractRawText({ buffer: Buffer.from(content, "base64") });
       return res.json({ text: result.value });
     }
-    return res.status(400).json({ error: "지원하지 않는 형식입니다. (docx만 서버 처리)" });
+    if (ext === "ppt" || ext === "pptx") {
+      const { parseOffice } = await import("officeparser");
+      const text = await new Promise((resolve, reject) => {
+        parseOffice(Buffer.from(content, "base64"), (data, err) => err ? reject(err) : resolve(data));
+      });
+      return res.json({ text });
+    }
+    if (ext === "pdf") {
+      const text = await callClaudeFile(content, "application/pdf", true);
+      return res.json({ text });
+    }
+    if (IMAGE_TYPES[ext]) {
+      const text = await callClaudeFile(content, IMAGE_TYPES[ext], false);
+      return res.json({ text });
+    }
+    return res.status(400).json({ error: "지원하지 않는 형식입니다." });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
