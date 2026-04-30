@@ -218,6 +218,30 @@ export function setupSlack(app) {
     const { date, hour } = slotData;
     const booker = payload.user;
 
+    // 이미 확정된 슬롯인지 체크
+    const allScheds = kvScan("schedule:");
+    const alreadyBooked = allScheds.some(({ value }) =>
+      Array.isArray(value) && value.some(s =>
+        s.date === date && parseInt(s.start) === hour && !s.slackAvailable
+      )
+    );
+    if (alreadyBooked) {
+      if (payload.message?.blocks && payload.channel?.id) {
+        const newBlocks = disableSlotInBlocks(payload.message.blocks, date, hour);
+        await slackAPI("chat.update", {
+          channel: payload.channel.id,
+          ts: payload.message.ts,
+          blocks: newBlocks,
+          text: "로빈의 미팅 가능 시간"
+        });
+      }
+      return res.json({
+        response_type: "ephemeral",
+        replace_original: false,
+        text: `⚠️ 해당 일정은 이미 다른 분과 예약 확정이 되었습니다.`
+      });
+    }
+
     // 중복 요청 체크
     const requests = kvGet("slackRequests") || [];
     if (requests.some(r => r.date === date && r.hour === hour && r.requesterId === booker.id)) {
@@ -279,6 +303,39 @@ export function setupSlack(app) {
 
 }
 
+/* ── 게시 메시지 버튼 비활성화 ───────────────────────────────── */
+function disableSlotInBlocks(blocks, date, hour) {
+  const targetId = `slot__${date}__${hour}`;
+  return blocks.map(block => {
+    if (block.type !== "actions") return block;
+    const newElements = block.elements.map(el => {
+      if (el.action_id !== targetId) return el;
+      return {
+        type: "button",
+        text: { type: "plain_text", text: `✅ ${hour}:00 마감`, emoji: false },
+        value: el.value,
+        action_id: `closed__${date}__${hour}`
+      };
+    });
+    return { ...block, elements: newElements };
+  });
+}
+
+async function disableSlotInAllMessages(date, hour) {
+  const msgs = kvScan("slackMsg:");
+  for (const { key, value } of msgs) {
+    if (!value?.ts || !value?.channel || !value?.blocks) continue;
+    const newBlocks = disableSlotInBlocks(value.blocks, date, hour);
+    const r = await slackAPI("chat.update", {
+      channel: value.channel,
+      ts: value.ts,
+      blocks: newBlocks,
+      text: "로빈의 미팅 가능 시간"
+    });
+    if (r.ok) kvSet(key, { ...value, blocks: newBlocks });
+  }
+}
+
 /* ── DM 헬퍼 ─────────────────────────────────────────────────── */
 async function sendDM(userId, text, blocks) {
   const open = await slackAPI("conversations.open", { users: userId });
@@ -337,6 +394,9 @@ export function setupSlackSend(app) {
     // 해당 슬롯 요청 전체 제거
     kvSet("slackRequests", all.filter(r => !(r.date === date && r.hour === hour)));
 
+    // 게시된 Slack 메시지에서 해당 슬롯 버튼 비활성화
+    await disableSlotInAllMessages(date, hour);
+
     if (BOT_TOKEN()) {
       // 확정자에게 DM
       await sendDM(requesterId,
@@ -392,6 +452,7 @@ export function setupSlackSend(app) {
       const msg = { channel: cid, text, blocks };
       if (req.body?.threadTs) msg.thread_ts = req.body.threadTs;
       const r = await slackAPI("chat.postMessage", msg);
+      if (r.ok) kvSet(`slackMsg:${cid}:${r.ts.replace(".", "_")}`, { channel: cid, ts: r.ts, blocks });
       results.push({ type: "channel", channel: cid, ok: r.ok, error: r.error });
     }
 
@@ -409,6 +470,14 @@ export function setupSlackSend(app) {
       return res.status(500).json({ error: failed[0]?.error || "전송 실패" });
 
     res.json({ ok: true, results });
+  });
+
+  /* 슬롯 마감 — CRM에서 호출 시 게시된 메시지 버튼 비활성화 */
+  app.post("/api/slack/disable-slot", async (req, res) => {
+    const { date, hour } = req.body;
+    if (!date || hour === undefined) return res.status(400).json({ error: "date/hour 필요" });
+    await disableSlotInAllMessages(date, parseInt(hour));
+    res.json({ ok: true });
   });
 }
 

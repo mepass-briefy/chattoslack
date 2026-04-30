@@ -426,6 +426,11 @@ function WeeklyCalendar(p){
       var rr=await fetch("/api/slack/requests"); var dd=await rr.json(); setSlackRequests(dd.requests||[]);
     }
   }
+  async function closeSlot(slot){
+    await fetch("/api/slack/disable-slot",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({date:slot.date,hour:parseInt(slot.start)})});
+    delSlot(slot.id);
+    setViewSlot(null);
+  }
   function openGuestAdd(){
     setAddSlot(typeSelect); setTypeSelect(null);
     setAF({title:"",customer_id:"",note:"",slackAvailable:false}); setShowAdd(true);
@@ -551,6 +556,7 @@ function WeeklyCalendar(p){
                   </div>
                 </div>
               );})}
+              <div style={{marginTop:14,paddingTop:12,borderTop:"1px solid "+M.outlineVar}}><Btn variant="outline" size="sm" style={{color:M.warn,borderColor:M.warn}} onClick={function(){closeSlot(viewSlot);}}>🔒 마감 처리</Btn></div>
             </div>
           ):(
             <div>
