@@ -361,10 +361,12 @@ function WeeklyCalendar(p){
   var [scheds,setScheds]=useState([]); var [loaded,setLoaded]=useState(false);
   var [weekStart,setWeekStart]=useState(function(){return getMonday(new Date());});
   var [showAdd,setShowAdd]=useState(false); var [addSlot,setAddSlot]=useState(null);
-  var [af,setAF]=useState({title:"",customer_id:"",note:""});
+  var [af,setAF]=useState({title:"",customer_id:"",note:"",slackAvailable:false});
   var [viewSlot,setViewSlot]=useState(null);
+  var [typeSelect,setTypeSelect]=useState(null);
   var [slackSt,setSlackSt]=useState("idle");
   var [slackErr,setSlackErr]=useState("");
+  var [channelId,setChannelId]=useState("");
   useEffect(function(){(async function(){var s=await store.get(SK,[]); setScheds(s); setLoaded(true);})();}, [user.id]);
   var HOURS=[9,10,11,12,13,14,15,16];
   var wDays=[0,1,2,3,4].map(function(i){return addDays(weekStart,i);});
@@ -376,19 +378,32 @@ function WeeklyCalendar(p){
   async function saveAdd(){
     if(!addSlot||!af.title.trim()) return;
     var ds=addSlot.date.toISOString().split("T")[0];
-    var e={id:uid(),date:ds,start:addSlot.hour+":00",end:(addSlot.hour+1)+":00",title:af.title,customer_id:af.customer_id,note:af.note};
+    var e={id:uid(),date:ds,start:addSlot.hour+":00",end:(addSlot.hour+1)+":00",title:af.title,customer_id:af.customer_id,note:af.note,slackAvailable:af.slackAvailable||false};
     var upd=scheds.concat([e]); await store.set(SK,upd); setScheds(upd);
-    setShowAdd(false); setAF({title:"",customer_id:"",note:""});
+    setShowAdd(false); setAF({title:"",customer_id:"",note:"",slackAvailable:false});
   }
   async function delSlot(id){var upd=scheds.filter(function(s){return s.id!==id;}); await store.set(SK,upd); setScheds(upd); setViewSlot(null);}
-  async function sendToSlack(){
+  async function sendToSlack(cid){
     setSlackSt("sending");
     try{
-      var r=await fetch("/api/slack/send-availability",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({})});
+      var body=cid?{channelId:cid}:{};
+      var r=await fetch("/api/slack/send-availability",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       var d=await r.json();
-      if(!d.ok) throw new Error(d.error||d.message||"전송 실패");
+      if(!d.ok){
+        var msg=d.error||d.message||"전송 실패";
+        if(msg.includes("SLACK_CHANNEL_ID")){setSlackSt("nochannel"); return;}
+        throw new Error(msg);
+      }
       setSlackSt("done"); setTimeout(function(){setSlackSt("idle");},3000);
     }catch(e){setSlackErr(e.message); setSlackSt("error"); setTimeout(function(){setSlackSt("idle");setSlackErr("");},5000);}
+  }
+  function openGuestAdd(){
+    setAddSlot(typeSelect); setTypeSelect(null);
+    setAF({title:"",customer_id:"",note:"",slackAvailable:false}); setShowAdd(true);
+  }
+  function openSlackAdd(){
+    setAddSlot(typeSelect); setTypeSelect(null);
+    setAF({title:(user.name||"RM")+" 미팅 가능 일정",customer_id:"",note:"",slackAvailable:true}); setShowAdd(true);
   }
   var DAY_KO=["월","화","수","목","금"];
   var btnSt={padding:"4px 10px",borderRadius:6,border:"1px solid "+M.outlineVar,background:"transparent",color:M.onSurfVar,cursor:"pointer",fontSize:14,fontFamily:"'Noto Sans KR',system-ui,sans-serif"};
@@ -406,6 +421,12 @@ function WeeklyCalendar(p){
           {slackSt==="sending"&&<span style={{fontSize:13,color:M.onSurfVar}}>⏳ 전송 중...</span>}
           {slackSt==="done"&&<span style={{fontSize:13,color:M.success}}>✓ 전송 완료</span>}
           {slackSt==="error"&&<span style={{fontSize:13,color:M.error,maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>오류: {slackErr}</span>}
+          {slackSt==="nochannel"&&<div style={{display:"flex",alignItems:"center",gap:6}}>
+            <span style={{fontSize:12,color:M.onSurfVar,whiteSpace:"nowrap"}}>채널 ID 입력:</span>
+            <input value={channelId} onChange={function(e){setChannelId(e.target.value);}} placeholder="C12345678" style={{padding:"3px 8px",borderRadius:6,border:"1px solid "+M.outlineVar,background:M.surface,color:M.onSurf,fontSize:13,width:130,fontFamily:"inherit",outline:"none"}}/>
+            <button onClick={function(){sendToSlack(channelId.trim());}} disabled={!channelId.trim()} style={{padding:"4px 12px",borderRadius:6,border:"1px solid "+M.primary,background:M.primaryCont,color:M.primary,cursor:"pointer",fontSize:13,fontFamily:"'Noto Sans KR',system-ui,sans-serif",opacity:channelId.trim()?1:.5}}>전송</button>
+            <button onClick={function(){setSlackSt("idle");setChannelId("");}} style={btnSt}>취소</button>
+          </div>}
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <button onClick={function(){setWeekStart(function(w){return addDays(w,-7);});}} style={btnSt}>{"<"}</button>
             <span style={{fontSize:13,color:M.onSurfVar,minWidth:150,textAlign:"center"}}>{fmtMD(wDays[0])} – {fmtMD(wDays[4])} {weekStart.getFullYear()}</span>
@@ -434,13 +455,20 @@ function WeeklyCalendar(p){
                   var slot=getSlot(d,hour); var past=isPast(d,hour);
                   if(past) return <div key={i} style={{height:36,borderRadius:5,background:M.scHst,opacity:.35}}/>;
                   if(slot){
+                    if(slot.slackAvailable){
+                      return <div key={i} onClick={function(){setViewSlot(slot);}}
+                        style={{height:36,borderRadius:5,background:M.warnCont,border:"1px solid "+M.warnBorder,cursor:"pointer",padding:"0 6px",display:"flex",alignItems:"center",gap:4,overflow:"hidden",transition:"background .2s cubic-bezier(.2,0,0,1)"}}>
+                        <span style={{fontSize:10,color:M.warn,flexShrink:0}}>💬</span>
+                        <span style={{fontSize:11,fontWeight:600,color:M.warn,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>슬랙</span>
+                      </div>;
+                    }
                     return <div key={i} onClick={function(){setViewSlot(slot);}}
                       style={{height:36,borderRadius:5,background:M.primaryCont,border:"1px solid "+M.primary+"70",cursor:"pointer",padding:"0 8px",display:"flex",alignItems:"center",overflow:"hidden",transition:"background .2s cubic-bezier(.2,0,0,1)"}}>
                       <span style={{fontSize:12,fontWeight:600,color:M.primary,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{slot.title}</span>
                     </div>;
                   }
                   /* 상담 가능 슬롯 — 기본 활성 상태 */
-                  return <div key={i} onClick={function(){setAddSlot({date:d,hour:hour});setShowAdd(true);}}
+                  return <div key={i} onClick={function(){setTypeSelect({date:d,hour:hour});}}
                     style={{height:36,borderRadius:5,background:M.successCont,border:"1px solid "+M.successBorder,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:4,transition:"all .12s"}}>
                     <span style={{fontSize:11,fontWeight:500,color:M.success}}>가능</span>
                   </div>;
@@ -450,10 +478,23 @@ function WeeklyCalendar(p){
           })}
         </div>
       </div>
-      <Modal open={showAdd} title={(addSlot?fmtMD(addSlot.date)+" "+addSlot.hour+":00 – "+(addSlot.hour+1)+":00":"")+"\u00a0상담 예약"} onClose={function(){setShowAdd(false);setAF({title:"",customer_id:"",note:""});}} maxWidth={420}
+      <Modal open={!!typeSelect} title="일정 유형 선택" onClose={function(){setTypeSelect(null);}} maxWidth={320}
+        footer={null}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,padding:"4px 0 8px"}}>
+          <button onClick={openGuestAdd} style={{padding:"20px 8px",borderRadius:10,border:"1px solid "+M.outlineVar,background:M.scHst,color:M.onSurf,cursor:"pointer",fontSize:14,fontFamily:"'Noto Sans KR',system-ui,sans-serif",lineHeight:1.6,transition:"all .15s"}}>
+            <div style={{fontSize:20,marginBottom:6}}>{"👥"}</div>
+            <div style={{fontWeight:600}}>고객상담</div>
+          </button>
+          <button onClick={openSlackAdd} style={{padding:"20px 8px",borderRadius:10,border:"1px solid "+M.primary+"60",background:M.primaryCont,color:M.primary,cursor:"pointer",fontSize:14,fontFamily:"'Noto Sans KR',system-ui,sans-serif",lineHeight:1.6,transition:"all .15s"}}>
+            <div style={{fontSize:20,marginBottom:6}}>{"💬"}</div>
+            <div style={{fontWeight:600}}>슬랙 미팅<br/>가능 일정</div>
+          </button>
+        </div>
+      </Modal>
+            <Modal open={showAdd} title={(addSlot?fmtMD(addSlot.date)+" "+addSlot.hour+":00 – "+(addSlot.hour+1)+":00":"")+" "+(af.slackAvailable?"슬랙 미팅 가능 일정":"상담 예약")} onClose={function(){setShowAdd(false);setAF({title:"",customer_id:"",note:"",slackAvailable:false});}} maxWidth={420}
         footer={<><Btn variant="ghost" onClick={function(){setShowAdd(false);}}>취소</Btn><Btn onClick={saveAdd} disabled={!af.title.trim()}>등록</Btn></>}>
-        <Inp label="제목" required value={af.title} onChange={function(e){setAf("title",e.target.value);}} placeholder="고객사명 또는 미팅 목적" mb={12}/>
-        <Sel label="고객사 연결 (선택)" value={af.customer_id} onChange={function(e){setAf("customer_id",e.target.value);}} options={customers.map(function(c){return{value:c.id,label:c.company};})} placeholder="선택 안함"/>
+        <Inp label="제목" required value={af.title} onChange={function(e){setAf("title",e.target.value);}} placeholder={af.slackAvailable?"예: 로빈 미팅 가능 일정":"고객사명 또는 미팅 목적"} mb={12}/>
+        {!af.slackAvailable&&<Sel label="고객사 연결 (선택)" value={af.customer_id} onChange={function(e){setAf("customer_id",e.target.value);}} options={customers.map(function(c){return{value:c.id,label:c.company};})} placeholder="선택 안함"/>}
         <Inp label="메모" value={af.note} onChange={function(e){setAf("note",e.target.value);}} multiline rows={2} placeholder="참고사항" mb={0}/>
       </Modal>
       <Modal open={!!viewSlot} title="일정 상세" onClose={function(){setViewSlot(null);}} maxWidth={360}

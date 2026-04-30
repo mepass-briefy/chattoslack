@@ -33,26 +33,21 @@ function verifySlack(rawBody, headers) {
 const WORK_HOURS = [9, 10, 11, 13, 14, 15, 16]; // 12시 점심 제외
 
 function getAvailableSlots(schedules) {
-  const today  = new Date(); today.setHours(0, 0, 0, 0);
-  const nowH   = new Date().getHours();
-  const result = [];
-  let cursor   = new Date(today);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const nowH  = new Date().getHours();
 
-  while (result.length < 5) {              // 최대 5 영업일
-    const dow = cursor.getDay();
-    if (dow !== 0 && dow !== 6) {          // 월~금
-      const dateStr = cursor.toISOString().split("T")[0];
-      const hours = WORK_HOURS.filter(h => {
-        const past   = cursor.getTime() === today.getTime() && h <= nowH;
-        const booked = schedules.some(s => s.date === dateStr && parseInt(s.start) === h);
-        return !past && !booked;
-      });
-      if (hours.length) result.push({ date: dateStr, hours });
-    }
-    cursor = new Date(cursor.getTime() + 86_400_000);
-    if (cursor.getTime() - today.getTime() > 14 * 86_400_000) break; // 2주 이상이면 중단
+  // CRM에서 명시적으로 슬랙 가능 일정으로 등록된 슬롯만 반환
+  const slackSlots = schedules.filter(s => s.slackAvailable);
+  const byDate = {};
+  for (const s of slackSlots) {
+    const h = parseInt(s.start);
+    const d = new Date(s.date + "T00:00:00");
+    const past = d.getTime() < today.getTime() || (d.getTime() === today.getTime() && h <= nowH);
+    if (past) continue;
+    if (!byDate[s.date]) byDate[s.date] = [];
+    byDate[s.date].push(h);
   }
-  return result;
+  return Object.keys(byDate).sort().map(date => ({ date, hours: byDate[date].sort((a,b)=>a-b) }));
 }
 
 /* ── 날짜 포맷 ───────────────────────────────────────────────── */
@@ -222,16 +217,18 @@ export function setupSlack(app) {
     const { date, hour } = slotData;
     const booker = payload.user;
 
-    // 중복 예약 체크
+    // 중복 예약 체크 (slackAvailable 슬롯 제외)
     const schedules = kvGet("schedule:local") || [];
-    if (schedules.some(s => s.date === date && parseInt(s.start) === hour)) {
+    const conflict = schedules.find(s => s.date === date && parseInt(s.start) === hour && !s.slackAvailable);
+    if (conflict) {
       return res.json({
         response_action: "ephemeral",
         text: "⚠️ 이미 예약된 시간입니다. 다른 시간을 선택해 주세요."
       });
     }
 
-    // CRM 캘린더에 저장
+    // slackAvailable 슬롯을 확정 예약으로 교체
+    const withoutSlot = schedules.filter(s => !(s.date === date && parseInt(s.start) === hour));
     const entry = {
       id: uid(),
       date,
@@ -241,7 +238,7 @@ export function setupSlack(app) {
       customer_id: "",
       note: `Slack 예약 (@${booker.name})`
     };
-    kvSet("schedule:local", [...schedules, entry]);
+    kvSet("schedule:local", [...withoutSlot, entry]);
 
     // 로빈에게 DM
     await dmRobin(
