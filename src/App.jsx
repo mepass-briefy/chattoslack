@@ -2434,7 +2434,7 @@ function SettingsPage(){
               <div style={{fontSize:15,fontWeight:600,color:M.onSurf,marginBottom:14}}>테마</div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 18px",borderRadius:10,background:M.scHst}}>
                 <div><div style={{fontSize:14,color:M.onSurf}}>{isDark?"다크 모드":"라이트 모드"}</div><div style={{fontSize:12,color:M.onSurfVar,marginTop:3}}>사이드바 하단 버튼으로도 전환 가능</div></div>
-                <div onClick={function(){toggleTheme();}} style={{width:44,height:24,borderRadius:12,background:isDark?M.primary:M.outline,cursor:"pointer",position:"relative",transition:"background .25s",flexShrink:0}}><div style={{position:"absolute",top:3,left:isDark?"calc(100% - 21px)":3,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left .25s",boxShadow:"0 1px 3px rgba(0,0,0,.3)"}}></div></div>
+                <div onClick={function(){(app.toggleTheme||function(){})();}} style={{width:44,height:24,borderRadius:12,background:isDark?M.primary:M.outline,cursor:"pointer",position:"relative",transition:"background .25s",flexShrink:0}}><div style={{position:"absolute",top:3,left:isDark?"calc(100% - 21px)":3,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left .25s",boxShadow:"0 1px 3px rgba(0,0,0,.3)"}}></div></div>
               </div>
             </Card>
           </div>
@@ -2531,7 +2531,7 @@ export default function App(){
   }
   async function logout(){ await store.del("session"); setUser(null); setAppState("login"); setPage("home"); setSelectedCustomer(null); }
 
-  var ctx={user:user,logout:logout,changeSeed:changeSeed,seed:seed,isDark:isDark};
+  var ctx={user:user,logout:logout,changeSeed:changeSeed,seed:seed,isDark:isDark,toggleTheme:toggleTheme};
 
   /* ── Loading ── */
   if(appState==="loading") return(
