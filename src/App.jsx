@@ -786,7 +786,6 @@ function CustomerListPage(p){
   var [dateFrom,setDateFrom]=useState(""); var [dateTo,setDateTo]=useState("");
   var [page,setPage]=useState(0); var PAGE=20;
   var [showAdd,setShowAdd]=useState(false); var [form,setForm]=useState(Object.assign({},EMPTY_C)); var [saving,setSaving]=useState(false);
-  var [fileSt,setFileSt]=useState("");
   useEffect(function(){load();}, []);
   async function load(){var cs=await store.get("customers:"+user.id,[]); setList(cs); setLoaded(true);}
   function setF(k,v){setForm(function(pr){var n=Object.assign({},pr); n[k]=v; return n;});}
@@ -1209,7 +1208,7 @@ function ConsultingTab(p){
   var NOTES_KEY="notes:"+proj.id;
   var [notes,setNotes]=useState([]); var [loaded,setLoaded]=useState(false);
   var [showAdd,setShowAdd]=useState(false); var [noteForm,setNoteForm]=useState({title:"",date:today(),content:""});
-  var [saving,setSaving]=useState(false); var [analyzing,setAnalyzing]=useState(null); var [expandId,setExpandId]=useState(null);
+  var [saving,setSaving]=useState(false); var [fileSt,setFileSt]=useState(""); var [analyzing,setAnalyzing]=useState(null); var [expandId,setExpandId]=useState(null);
   useEffect(function(){(async function(){var ns=await store.get(NOTES_KEY,[]); setNotes(ns); setLoaded(true);})();}, [proj.id]);
   function setNF(k,v){setNoteForm(function(pr){var n=Object.assign({},pr); n[k]=v; return n;});}
   async function handleFileUpload(file){
