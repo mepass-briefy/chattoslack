@@ -1227,15 +1227,14 @@ function ConsultingTab(p){
         var reader2=new FileReader();
         reader2.onload=async function(ev){
           try{
-            var arr=new Uint8Array(ev.target.result);
-            var b64=btoa(Array.from(arr).map(function(b){return String.fromCharCode(b);}).join(""));
+            var b64=ev.target.result.split(",")[1];
             var r=await fetch("/api/extract-text",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({filename:file.name,content:b64})});
             var d=await r.json();
             if(d.text){setNF("content",d.text); setFileSt("done");}else{setFileSt("error");}
           }catch(e){setFileSt("error");}
         };
         reader2.onerror=function(){setFileSt("error");};
-        reader2.readAsArrayBuffer(file); return;
+        reader2.readAsDataURL(file); return;
       }
       setFileSt("unsupported");
     }catch(e){setFileSt("error");}
