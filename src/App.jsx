@@ -2,10 +2,14 @@ import { useState, useEffect, createContext, useContext } from "react";
 import * as XLSX from "xlsx";
 
 /* ── Tokens ────────────────────────────────────────────────── */
-var TEAL_DARK={primary:"#6AADAA",onPrimary:"#00403B",primaryCont:"#1C3A38",error:"#E07070",errorCont:"rgba(224,112,112,0.11)",errorBorder:"rgba(224,112,112,0.22)",success:"#65B365",successCont:"rgba(101,179,101,0.11)",successBorder:"rgba(101,179,101,0.22)",warn:"#D4A244",warnCont:"rgba(212,162,68,0.11)",warnBorder:"rgba(212,162,68,0.22)",bg:"#1A1D1D",surface:"#1F2424",sc:"#252C2C",scHi:"#2B3333",scHst:"#313B3A",onSurf:"#CDD6D5",onSurfVar:"#778F8D",outline:"#4E6E6C",outlineVar:"#232E2E"};
+var TEAL_DARK={primary:"#6AADAA",onPrimary:"#00403B",primaryCont:"#1C3A38",error:"#E07070",errorCont:"rgba(224,112,112,0.11)",errorBorder:"rgba(224,112,112,0.22)",success:"#65B365",successCont:"rgba(101,179,101,0.11)",successBorder:"rgba(101,179,101,0.22)",warn:"#D4A244",warnCont:"rgba(212,162,68,0.11)",warnBorder:"rgba(212,162,68,0.22)",bg:"#1A1D1D",surface:"#1F2424",sc:"#252C2C",scHi:"#2B3333",scHst:"#313B3A",onSurf:"#D8E4E2",onSurfVar:"#90AEAD",outline:"#4E6E6C",outlineVar:"#232E2E"};
 var TEAL_LIGHT={primary:"#0D9488",onPrimary:"#FFFFFF",primaryCont:"#F0FDFA",error:"#DC2626",errorCont:"rgba(220,38,38,0.06)",errorBorder:"rgba(220,38,38,0.20)",success:"#16A34A",successCont:"rgba(22,163,74,0.06)",successBorder:"rgba(22,163,74,0.18)",warn:"#D97706",warnCont:"rgba(217,119,6,0.06)",warnBorder:"rgba(217,119,6,0.20)",bg:"#F5F6FA",surface:"#FFFFFF",sc:"#FFFFFF",scHi:"#F8F9FC",scHst:"#F1F3F8",onSurf:"#111827",onSurfVar:"#6B7280",outline:"#9CA3AF",outlineVar:"#E5E7EB"};
-var BLUE_DARK={primary:"#5B9FD4",onPrimary:"#0A2A4A",primaryCont:"#163350",error:"#E07070",errorCont:"rgba(224,112,112,0.11)",errorBorder:"rgba(224,112,112,0.22)",success:"#65B365",successCont:"rgba(101,179,101,0.11)",successBorder:"rgba(101,179,101,0.22)",warn:"#D4A244",warnCont:"rgba(212,162,68,0.11)",warnBorder:"rgba(212,162,68,0.22)",bg:"#191C20",surface:"#1E2228",sc:"#23282F",scHi:"#292F38",scHst:"#2F3641",onSurf:"#D3D9E4",onSurfVar:"#7A8799",outline:"#4E6070",outlineVar:"#21272E"};
+var BLUE_DARK={primary:"#5B9FD4",onPrimary:"#0A2A4A",primaryCont:"#163350",error:"#E07070",errorCont:"rgba(224,112,112,0.11)",errorBorder:"rgba(224,112,112,0.22)",success:"#65B365",successCont:"rgba(101,179,101,0.11)",successBorder:"rgba(101,179,101,0.22)",warn:"#D4A244",warnCont:"rgba(212,162,68,0.11)",warnBorder:"rgba(212,162,68,0.22)",bg:"#191C20",surface:"#1E2228",sc:"#23282F",scHi:"#292F38",scHst:"#2F3641",onSurf:"#DCE4F0",onSurfVar:"#8FA0B8",outline:"#4E6070",outlineVar:"#21272E"};
 var BLUE_LIGHT={primary:"#2563EB",onPrimary:"#FFFFFF",primaryCont:"#EFF6FF",error:"#DC2626",errorCont:"rgba(220,38,38,0.06)",errorBorder:"rgba(220,38,38,0.20)",success:"#16A34A",successCont:"rgba(22,163,74,0.06)",successBorder:"rgba(22,163,74,0.18)",warn:"#D97706",warnCont:"rgba(217,119,6,0.06)",warnBorder:"rgba(217,119,6,0.20)",bg:"#F5F6FA",surface:"#FFFFFF",sc:"#FFFFFF",scHi:"#F8F9FC",scHst:"#F1F3F8",onSurf:"#111827",onSurfVar:"#6B7280",outline:"#9CA3AF",outlineVar:"#E5E7EB"};
+var AMBER_DARK={primary:"#918070",onPrimary:"#1A1410",primaryCont:"#201E18",error:"#E07070",errorCont:"rgba(224,112,112,0.11)",errorBorder:"rgba(224,112,112,0.22)",success:"#65B365",successCont:"rgba(101,179,101,0.11)",successBorder:"rgba(101,179,101,0.22)",warn:"#C4A060",warnCont:"rgba(196,160,96,0.11)",warnBorder:"rgba(196,160,96,0.22)",bg:"#161514",surface:"#1B1A18",sc:"#21201C",scHi:"#272622",scHst:"#2D2C28",onSurf:"#E0DBD0",onSurfVar:"#A89E90",outline:"#585450",outlineVar:"#282420"};
+var AMBER_LIGHT={primary:"#6A5C50",onPrimary:"#FFFFFF",primaryCont:"#E8E0D8",error:"#DC2626",errorCont:"rgba(220,38,38,0.06)",errorBorder:"rgba(220,38,38,0.20)",success:"#16A34A",successCont:"rgba(22,163,74,0.06)",successBorder:"rgba(22,163,74,0.18)",warn:"#A07030",warnCont:"rgba(160,112,48,0.07)",warnBorder:"rgba(160,112,48,0.22)",bg:"#F6F4F2",surface:"#FFFFFF",sc:"#FFFFFF",scHi:"#F2F0EC",scHst:"#EAE8E0",onSurf:"#181410",onSurfVar:"#706860",outline:"#A09888",outlineVar:"#E4E0D8"};
+var ROSE_DARK={primary:"#8C96A8",onPrimary:"#0E1018",primaryCont:"#181E2A",error:"#E07070",errorCont:"rgba(224,112,112,0.11)",errorBorder:"rgba(224,112,112,0.22)",success:"#65B365",successCont:"rgba(101,179,101,0.11)",successBorder:"rgba(101,179,101,0.22)",warn:"#C4A060",warnCont:"rgba(196,160,96,0.11)",warnBorder:"rgba(196,160,96,0.22)",bg:"#141517",surface:"#191B1F",sc:"#1F2228",scHi:"#252A32",scHst:"#2B3038",onSurf:"#DDE2EB",onSurfVar:"#9098AA",outline:"#505660",outlineVar:"#20242C"};
+var ROSE_LIGHT={primary:"#566080",onPrimary:"#FFFFFF",primaryCont:"#E0E4F0",error:"#DC2626",errorCont:"rgba(220,38,38,0.06)",errorBorder:"rgba(220,38,38,0.20)",success:"#16A34A",successCont:"rgba(22,163,74,0.06)",successBorder:"rgba(22,163,74,0.18)",warn:"#D97706",warnCont:"rgba(217,119,6,0.06)",warnBorder:"rgba(217,119,6,0.20)",bg:"#F3F4F7",surface:"#FFFFFF",sc:"#FFFFFF",scHi:"#F0F1F5",scHst:"#E8EAF0",onSurf:"#0E1018",onSurfVar:"#626878",outline:"#9098A8",outlineVar:"#DFE2EA"};
 var M = Object.assign({}, TEAL_DARK);
 
 /* ── Status / Rate Tables ────────────────────────────────────── */
@@ -2418,7 +2422,7 @@ function SettingsPage(){
               <div style={{fontSize:15,fontWeight:600,color:M.onSurf,marginBottom:6}}>시드 컬러</div>
               <div style={{fontSize:13,color:M.onSurfVar,marginBottom:20}}>선택한 컬러가 다크·라이트 모드 전체에 적용됩니다</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:28}}>
-                {[["teal","Teal","#6AADAA","차갑고 전문적"],["blue","Blue","#5B9FD4","친숙하고 신뢰감"]].map(function(s){var act=seed===s[0]; return(
+                {[["teal","Teal","#6AADAA","차갑고 전문적"],["blue","Blue","#5B9FD4","친숙하고 신뢰감"],["amber","Amber","#918070","따뜻한 뉴트럴"],["rose","Rose","#8C96A8","쿨 블루-그레이"]].map(function(s){var act=seed===s[0]; return(
                   <button key={s[0]} onClick={function(){changeSeed(s[0]);}} style={{padding:"20px 16px",borderRadius:12,border:"2px solid "+(act?s[2]:M.outlineVar),background:act?M.primaryCont:"transparent",cursor:"pointer",textAlign:"center",fontFamily:"'Noto Sans KR',system-ui,sans-serif",transition:"all .2s cubic-bezier(.2,0,0,1)"}}>
                     <div style={{width:32,height:32,borderRadius:"50%",background:s[2],margin:"0 auto 10px"}}></div>
                     <div style={{fontSize:15,fontWeight:act?600:400,color:act?s[2]:M.onSurf}}>{s[1]}</div>
@@ -2468,7 +2472,9 @@ export default function App(){
   var [seed,setSeedState]=useState("teal");
 
   function getTokens(dark,s){
-    if(s==="blue") return dark?BLUE_DARK:BLUE_LIGHT;
+    if(s==="blue")  return dark?BLUE_DARK:BLUE_LIGHT;
+    if(s==="amber") return dark?AMBER_DARK:AMBER_LIGHT;
+    if(s==="rose")  return dark?ROSE_DARK:ROSE_LIGHT;
     return dark?TEAL_DARK:TEAL_LIGHT;
   }
   function toggleTheme(){
