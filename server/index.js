@@ -4,7 +4,7 @@ import { readFileSync, existsSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { kvGet, kvSet, kvDel } from "./db.js";
-import { setupSlack } from "./slack.js";
+import { setupSlack, setupSlackSend } from "./slack.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -30,6 +30,7 @@ setupSlack(app);
 
 /* ── 나머지 라우트: JSON 파싱 ────────────────────────────────── */
 app.use(express.json({ limit: "10mb" }));
+setupSlackSend(app);
 
 /* ── KV Storage API ──────────────────────────────────────────── */
 app.get("/api/kv/:key", (req, res) => {

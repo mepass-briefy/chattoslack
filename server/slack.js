@@ -41,9 +41,6 @@ function getAvailableSlots(schedules) {
   const byDate = {};
   for (const s of slackSlots) {
     const h = parseInt(s.start);
-    const d = new Date(s.date + "T00:00:00");
-    const past = d.getTime() < today.getTime() || (d.getTime() === today.getTime() && h <= nowH);
-    if (past) continue;
     if (!byDate[s.date]) byDate[s.date] = [];
     byDate[s.date].push(h);
   }
@@ -275,32 +272,56 @@ export function setupSlack(app) {
     });
   });
 
-  /* ③ CRM 프론트엔드 → Slack 채널 전송 */
+}
+
+/* ── DM 헬퍼 ─────────────────────────────────────────────────── */
+async function sendDM(userId, text, blocks) {
+  const open = await slackAPI("conversations.open", { users: userId });
+  if (!open.ok) return { ok: false, error: open.error };
+  return slackAPI("chat.postMessage", { channel: open.channel.id, text, ...(blocks ? { blocks } : {}) });
+}
+
+/* ── CRM 프론트엔드 → Slack 채널/DM 전송 (express.json 이후 등록) ── */
+export function setupSlackSend(app) {
   app.post("/api/slack/send-availability", async (req, res) => {
     if (!BOT_TOKEN())
       return res.status(500).json({ error: "SLACK_BOT_TOKEN이 설정되지 않았습니다." });
 
-    const channel = req.body?.channelId || CHANNEL_ID();
-    if (!channel)
-      return res.status(500).json({ error: "SLACK_CHANNEL_ID가 설정되지 않았습니다." });
-
-    const schedules = kvGet("schedule:local") || [];
-    const slots     = getAvailableSlots(schedules);
+    const scheduleKey = req.body?.scheduleKey || "schedule:local";
+    const schedules   = kvGet(scheduleKey) || [];
+    const slots       = getAvailableSlots(schedules);
 
     if (!slots.length)
       return res.json({ ok: false, message: "예약 가능한 시간이 없습니다." });
 
-    const threadTs = req.body?.threadTs || null;
-    const msg = {
-      channel,
-      text: "로빈의 미팅 가능 시간",
-      blocks: buildBlocks(slots)
-    };
-    if (threadTs) msg.thread_ts = threadTs;
+    const text   = "로빈의 미팅 가능 시간";
+    const blocks = buildBlocks(slots);
+    const dmUserIds = (req.body?.dmUserIds || []).filter(Boolean); // ["U123", "U456"]
+    const results = [];
 
-    const result = await slackAPI("chat.postMessage", msg);
+    // 채널/스레드 전송
+    const channelId = req.body?.channelId || CHANNEL_ID();
+    if (channelId) {
+      const msg = { channel: channelId, text, blocks };
+      if (req.body?.threadTs) msg.thread_ts = req.body.threadTs;
+      const r = await slackAPI("chat.postMessage", msg);
+      results.push({ type: "channel", ok: r.ok, error: r.error });
+    }
 
-    if (!result.ok) return res.status(500).json({ error: result.error });
-    res.json({ ok: true, ts: result.ts });
+    // DM 전송
+    for (const uid of dmUserIds) {
+      const r = await sendDM(uid, text, blocks);
+      results.push({ type: "dm", uid, ok: r.ok, error: r.error });
+    }
+
+    if (!channelId && dmUserIds.length === 0)
+      return res.status(500).json({ error: "SLACK_CHANNEL_ID가 설정되지 않았습니다." });
+
+    const failed = results.filter(r => !r.ok);
+    if (failed.length === results.length)
+      return res.status(500).json({ error: failed[0]?.error || "전송 실패" });
+
+    res.json({ ok: true, results });
   });
 }
+
