@@ -69,7 +69,7 @@ function buildBlocks(slots) {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "원하는 시간을 선택하면 즉시 예약이 확정됩니다."
+        text: "로빈이 가능한 미팅 일정을 보냈습니다. 원하는 시간을 선택하면 확인 후 최종 확정을 진행할거에요 😊"
       }
     },
     { type: "divider" }
@@ -101,7 +101,7 @@ function buildBlocks(slots) {
     type: "context",
     elements: [{
       type: "mrkdwn",
-      text: "버튼 클릭 후 로빈에게 DM으로 확정 알림이 전송됩니다."
+      text: "버튼 클릭 후 로빈이 확인하고 최종 확정 알림을 드립니다."
     }]
   });
 
@@ -376,13 +376,23 @@ export function setupSlackSend(app) {
     const dmUserIds = (req.body?.dmUserIds || []).filter(Boolean); // ["U123", "U456"]
     const results = [];
 
-    // 채널/스레드 전송
-    const channelId = req.body?.channelId || CHANNEL_ID();
-    if (channelId) {
-      const msg = { channel: channelId, text, blocks };
+    // 채널/스레드 전송 (복수 채널 지원)
+    const defaultCh = CHANNEL_ID();
+    let rawChannels;
+    if (req.body?.threadTs) {
+      // 스레드 답글: 스레드 채널만
+      const tCh = req.body?.channelId || defaultCh;
+      rawChannels = tCh ? [tCh] : [];
+    } else {
+      // 일반 전송: 기본 채널 + 추가 채널 병합
+      const extras = (req.body?.channelIds || []).filter(Boolean);
+      rawChannels = [...new Set([...(defaultCh ? [defaultCh] : []), ...extras])];
+    }
+    for (const cid of rawChannels) {
+      const msg = { channel: cid, text, blocks };
       if (req.body?.threadTs) msg.thread_ts = req.body.threadTs;
       const r = await slackAPI("chat.postMessage", msg);
-      results.push({ type: "channel", ok: r.ok, error: r.error });
+      results.push({ type: "channel", channel: cid, ok: r.ok, error: r.error });
     }
 
     // DM 전송
@@ -391,7 +401,7 @@ export function setupSlackSend(app) {
       results.push({ type: "dm", uid, ok: r.ok, error: r.error });
     }
 
-    if (!channelId && dmUserIds.length === 0)
+    if (!rawChannels.length && dmUserIds.length === 0)
       return res.status(500).json({ error: "SLACK_CHANNEL_ID가 설정되지 않았습니다." });
 
     const failed = results.filter(r => !r.ok);
