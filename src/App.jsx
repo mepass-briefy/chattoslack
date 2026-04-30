@@ -374,7 +374,7 @@ function WeeklyCalendar(p){
   useEffect(function(){(async function(){var s=await store.get(SK,[]); setScheds(s); setLoaded(true);})();}, [user.id]);
   useEffect(function(){(async function(){var r=await fetch("/api/slack/requests"); var d=await r.json(); setSlackRequests(d.requests||[]);})();}, []);
   useEffect(function(){
-    if(!viewSlot||!viewSlot.slackAvailable){setSlotRequests([]); return;}
+    if(!viewSlot){setSlotRequests([]); return;}
     (async function(){var r=await fetch("/api/slack/requests?date="+viewSlot.date+"&hour="+parseInt(viewSlot.start)); var d=await r.json(); setSlotRequests(d.requests||[]);})();
   }, [viewSlot]);
   var HOURS=[9,10,11,12,13,14,15,16,17,18,19];
@@ -494,10 +494,11 @@ function WeeklyCalendar(p){
                         <span style={{fontSize:11,fontWeight:600,color:M.warn,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{reqCnt>0?reqCnt+"건 요청":"슬랙"}</span>
                       </div>;
                     }
-                    return <div key={i} onClick={function(){setViewSlot(slot);}}
-                      style={{height:36,borderRadius:5,background:M.primaryCont,border:"1px solid "+M.primary+"70",cursor:"pointer",padding:"0 8px",display:"flex",alignItems:"center",overflow:"hidden",transition:"background .2s cubic-bezier(.2,0,0,1)"}}>
-                      <span style={{fontSize:12,fontWeight:600,color:M.primary,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{slot.title}</span>
-                    </div>;
+                    {var pCnt=slackRequests.filter(function(r){return r.date===slot.date&&r.hour===parseInt(slot.start);}).length; return <div key={i} onClick={function(){setViewSlot(slot);}}
+                      style={{height:36,borderRadius:5,background:M.primaryCont,border:"1px solid "+(pCnt>0?M.warn:M.primary+"70"),cursor:"pointer",padding:"0 6px",display:"flex",alignItems:"center",gap:4,overflow:"hidden",transition:"background .2s cubic-bezier(.2,0,0,1)"}}>
+                      {pCnt>0&&<span style={{fontSize:10,color:M.warn,flexShrink:0}}>🔔</span>}
+                      <span style={{fontSize:12,fontWeight:600,color:pCnt>0?M.warn:M.primary,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{pCnt>0?pCnt+"건 요청":slot.title}</span>
+                    </div>;}
                   }
                   /* 상담 가능 슬롯 — 기본 활성 상태 */
                   return <div key={i} onClick={function(){setTypeSelect({date:d,hour:hour});}}
@@ -556,6 +557,22 @@ function WeeklyCalendar(p){
               <div style={{fontSize:16,fontWeight:600,color:M.onSurf,marginBottom:6}}>{viewSlot.title}</div>
               {viewSlot.customer_id&&<div style={{fontSize:14,color:M.onSurfVar,marginBottom:4}}>고객사: {(customers.find(function(c){return c.id===viewSlot.customer_id;})||{}).company||""}</div>}
               {viewSlot.note&&<div style={{marginTop:10,padding:"10px 12px",borderRadius:8,background:M.scHst,fontSize:14,color:M.onSurfVar,lineHeight:1.7}}>{viewSlot.note}</div>}
+              {slotRequests.length>0&&<div style={{marginTop:14}}>
+                <div style={{fontSize:13,fontWeight:600,color:M.warn,marginBottom:8}}>🔔 미결 요청 {slotRequests.length}건</div>
+                {slotRequests.map(function(req){return(
+                  <div key={req.id} style={{padding:"10px 12px",marginBottom:8,borderRadius:8,background:M.scHst,border:"1px solid "+M.outlineVar}}>
+                    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:700,color:M.onSurf,marginBottom:2}}>{req.requesterName}</div>
+                        {req.requesterTitle&&<div style={{fontSize:11,color:M.primary,marginBottom:2}}>{req.requesterTitle}</div>}
+                        {req.requesterEmail&&<div style={{fontSize:11,color:M.onSurfVar,marginBottom:2}}>{req.requesterEmail}</div>}
+                        <div style={{fontSize:11,color:M.onSurfVar}}>@{req.requesterUsername}{req.requestedAt&&" · "+new Date(req.requestedAt).toLocaleString("ko-KR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}</div>
+                      </div>
+                      <Btn size="sm" onClick={function(){confirmRequest(req.id);}}>확정</Btn>
+                    </div>
+                  </div>
+                );})}
+              </div>}
             </div>
           )}
         </div>}
