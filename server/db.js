@@ -31,4 +31,11 @@ export function kvDel(key) {
   db.prepare("DELETE FROM kv_store WHERE key = ?").run(key);
 }
 
+// 특정 prefix로 시작하는 모든 키-값 반환
+export function kvScan(prefix) {
+  return db.prepare("SELECT key, value FROM kv_store WHERE key LIKE ?")
+    .all(prefix + "%")
+    .map(r => ({ key: r.key, value: (() => { try { return JSON.parse(r.value); } catch { return null; } })() }));
+}
+
 export default db;

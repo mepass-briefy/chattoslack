@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { kvGet, kvSet } from "./db.js";
+import { kvGet, kvSet, kvScan } from "./db.js";
 
 /* ── 환경변수 접근자 ─────────────────────────────────────────── */
 const BOT_TOKEN   = () => process.env.SLACK_BOT_TOKEN;
@@ -214,8 +214,22 @@ export function setupSlack(app) {
     const { date, hour } = slotData;
     const booker = payload.user;
 
+    // 모든 schedule:* 키에서 해당 슬롯 탐색
+    const allSchedules = kvScan("schedule:");
+    let targetKey = "schedule:local";
+    let schedules = [];
+    for (const { key, value } of allSchedules) {
+      if (!Array.isArray(value)) continue;
+      const hasSlot = value.some(s => s.date === date && parseInt(s.start) === hour);
+      if (hasSlot) { targetKey = key; schedules = value; break; }
+    }
+    if (!schedules.length) {
+      // fallback: 첫 번째 schedule:* 키 사용
+      const first = allSchedules.find(({ value }) => Array.isArray(value) && value.length);
+      if (first) { targetKey = first.key; schedules = first.value; }
+    }
+
     // 중복 예약 체크 (slackAvailable 슬롯 제외)
-    const schedules = kvGet("schedule:local") || [];
     const conflict = schedules.find(s => s.date === date && parseInt(s.start) === hour && !s.slackAvailable);
     if (conflict) {
       return res.json({
@@ -235,7 +249,7 @@ export function setupSlack(app) {
       customer_id: "",
       note: `Slack 예약 (@${booker.name})`
     };
-    kvSet("schedule:local", [...withoutSlot, entry]);
+    kvSet(targetKey, [...withoutSlot, entry]);
 
     // 로빈에게 DM
     await dmRobin(
