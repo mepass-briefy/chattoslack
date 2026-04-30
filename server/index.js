@@ -24,6 +24,7 @@ const PORT = IS_PROD ? 4321 : 4322;
 
 const app = express();
 app.use(cors());
+app.use((req, _res, next) => { console.log(`[REQ] ${req.method} ${req.path}`); next(); });
 
 /* ── Slack 라우트: raw body 필요하므로 JSON 미들웨어 전에 등록 ── */
 setupSlack(app);

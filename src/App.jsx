@@ -538,12 +538,16 @@ function WeeklyCalendar(p){
               <div style={{fontSize:13,color:M.onSurfVar,marginBottom:12}}>요청 {slotRequests.length}건</div>
               {slotRequests.length===0&&<div style={{fontSize:13,color:M.onSurfVar,padding:"12px 0"}}>아직 요청이 없습니다.</div>}
               {slotRequests.map(function(req){return(
-                <div key={req.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",marginBottom:6,borderRadius:8,background:M.scHst}}>
-                  <div>
-                    <div style={{fontSize:13,fontWeight:600,color:M.onSurf}}>{req.requesterName}</div>
-                    <div style={{fontSize:11,color:M.onSurfVar}}>@{req.requesterUsername}</div>
+                <div key={req.id} style={{padding:"10px 12px",marginBottom:8,borderRadius:8,background:M.scHst,border:"1px solid "+M.outlineVar}}>
+                  <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:700,color:M.onSurf,marginBottom:2}}>{req.requesterName}</div>
+                      {req.requesterTitle&&<div style={{fontSize:11,color:M.primary,marginBottom:2}}>{req.requesterTitle}</div>}
+                      {req.requesterEmail&&<div style={{fontSize:11,color:M.onSurfVar,marginBottom:2}}>{req.requesterEmail}</div>}
+                      <div style={{fontSize:11,color:M.onSurfVar}}>@{req.requesterUsername}{req.requestedAt&&" · "+new Date(req.requestedAt).toLocaleString("ko-KR",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}</div>
+                    </div>
+                    <Btn size="sm" onClick={function(){confirmRequest(req.id);}}>확정</Btn>
                   </div>
-                  <Btn size="sm" onClick={function(){confirmRequest(req.id);}}>확정</Btn>
                 </div>
               );})}
             </div>

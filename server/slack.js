@@ -224,12 +224,28 @@ export function setupSlack(app) {
       return res.json({ replace_original: false, text: "⚠️ 이미 요청하신 시간입니다." });
     }
 
+    // users.info로 실제 이름/프로필 조회
+    let requesterName = booker.name;
+    let requesterEmail = "";
+    let requesterTitle = "";
+    try {
+      const info = await slackAPI("users.info", { user: booker.id });
+      if (info.ok && info.user?.profile) {
+        const p = info.user.profile;
+        requesterName = p.real_name || p.display_name || booker.name;
+        requesterEmail = p.email || "";
+        requesterTitle = p.title || "";
+      }
+    } catch {}
+
     // 요청 저장
     const request = {
       id: uid(), date, hour,
       requesterId: booker.id,
-      requesterName: booker.real_name || booker.name,
+      requesterName,
       requesterUsername: booker.name,
+      requesterEmail,
+      requesterTitle,
       requestedAt: new Date().toISOString()
     };
     kvSet("slackRequests", [...requests, request]);
