@@ -479,5 +479,54 @@ export function setupSlackSend(app) {
     await disableSlotInAllMessages(date, parseInt(hour));
     res.json({ ok: true });
   });
+
+  /* 채널 히스토리 스캔 → 확정된 슬롯 버튼 일괄 비활성화 */
+  app.post("/api/slack/sync-messages", async (req, res) => {
+    if (!BOT_TOKEN()) return res.status(500).json({ error: "SLACK_BOT_TOKEN 미설정" });
+
+    // 확정된 슬롯 수집 (slackAvailable 아닌 것)
+    const allScheds = kvScan("schedule:");
+    const confirmed = [];
+    for (const { value } of allScheds) {
+      if (!Array.isArray(value)) continue;
+      for (const s of value) {
+        if (!s.slackAvailable && s.date && s.start)
+          confirmed.push({ date: s.date, hour: parseInt(s.start) });
+      }
+    }
+    if (!confirmed.length) return res.json({ ok: true, updated: 0, message: "확정된 일정 없음" });
+
+    // 스캔할 채널: 저장된 것 + 기본 채널
+    const channels = new Set();
+    for (const { value } of kvScan("slackMsg:")) { if (value?.channel) channels.add(value.channel); }
+    if (CHANNEL_ID()) channels.add(CHANNEL_ID());
+
+    let updated = 0;
+    for (const channelId of channels) {
+      const history = await slackAPI("conversations.history", { channel: channelId, limit: 100 });
+      if (!history.ok) continue;
+
+      const botMsgs = (history.messages || []).filter(m =>
+        m.bot_id && Array.isArray(m.blocks) &&
+        m.blocks.some(b => b.type === "actions" && b.elements?.some(el => el.action_id?.startsWith("slot__")))
+      );
+
+      for (const msg of botMsgs) {
+        let blocks = msg.blocks;
+        let changed = false;
+        for (const { date, hour } of confirmed) {
+          const hasBtn = blocks.some(b => b.type === "actions" && b.elements?.some(el => el.action_id === `slot__${date}__${hour}`));
+          if (hasBtn) { blocks = disableSlotInBlocks(blocks, date, hour); changed = true; }
+        }
+        if (!changed) continue;
+        const r = await slackAPI("chat.update", { channel: channelId, ts: msg.ts, blocks, text: "로빈의 미팅 가능 시간" });
+        if (r.ok) {
+          kvSet(`slackMsg:${channelId}:${msg.ts.replace(".", "_")}`, { channel: channelId, ts: msg.ts, blocks });
+          updated++;
+        }
+      }
+    }
+    res.json({ ok: true, updated });
+  });
 }
 
