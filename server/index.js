@@ -50,6 +50,24 @@ app.delete("/api/kv/:key", (req, res) => {
   res.json({ ok: true });
 });
 
+/* ── 파일 텍스트 추출 (docx) ─────────────────────────────────── */
+app.post("/api/extract-text", async (req, res) => {
+  const { filename, content } = req.body; // content: base64
+  if (!filename || !content) return res.status(400).json({ error: "filename/content 필요" });
+  const ext = filename.split(".").pop().toLowerCase();
+  try {
+    if (ext === "docx") {
+      const mammoth = await import("mammoth");
+      const buffer = Buffer.from(content, "base64");
+      const result = await mammoth.extractRawText({ buffer });
+      return res.json({ text: result.value });
+    }
+    return res.status(400).json({ error: "지원하지 않는 형식입니다. (docx만 서버 처리)" });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 /* ── Anthropic AI Proxy ──────────────────────────────────────── */
 app.post("/api/ai", async (req, res) => {
   const apiKey = process.env.ANTHROPIC_API_KEY;
