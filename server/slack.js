@@ -290,11 +290,15 @@ export function setupSlack(app) {
     if (!slots.length)
       return res.json({ ok: false, message: "예약 가능한 시간이 없습니다." });
 
-    const result = await slackAPI("chat.postMessage", {
+    const threadTs = req.body?.threadTs || null;
+    const msg = {
       channel,
       text: "로빈의 미팅 가능 시간",
       blocks: buildBlocks(slots)
-    });
+    };
+    if (threadTs) msg.thread_ts = threadTs;
+
+    const result = await slackAPI("chat.postMessage", msg);
 
     if (!result.ok) return res.status(500).json({ error: result.error });
     res.json({ ok: true, ts: result.ts });

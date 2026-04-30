@@ -367,6 +367,7 @@ function WeeklyCalendar(p){
   var [slackSt,setSlackSt]=useState("idle");
   var [slackErr,setSlackErr]=useState("");
   var [channelId,setChannelId]=useState("");
+  var [threadUrl,setThreadUrl]=useState("");
   useEffect(function(){(async function(){var s=await store.get(SK,[]); setScheds(s); setLoaded(true);})();}, [user.id]);
   var HOURS=[9,10,11,12,13,14,15,16];
   var wDays=[0,1,2,3,4].map(function(i){return addDays(weekStart,i);});
@@ -383,10 +384,19 @@ function WeeklyCalendar(p){
     setShowAdd(false); setAF({title:"",customer_id:"",note:"",slackAvailable:false});
   }
   async function delSlot(id){var upd=scheds.filter(function(s){return s.id!==id;}); await store.set(SK,upd); setScheds(upd); setViewSlot(null);}
+  function parseThreadUrl(url){
+    var m=url.match(/archives\/([A-Z0-9]+)\/p(\d+)/);
+    if(!m) return null;
+    return {channelId:m[1], threadTs:m[2].slice(0,-6)+"."+m[2].slice(-6)};
+  }
   async function sendToSlack(cid){
     setSlackSt("sending");
     try{
       var body=cid?{channelId:cid}:{};
+      if(threadUrl.trim()){
+        var parsed=parseThreadUrl(threadUrl.trim());
+        if(parsed){body.channelId=parsed.channelId; body.threadTs=parsed.threadTs;}
+      }
       var r=await fetch("/api/slack/send-availability",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       var d=await r.json();
       if(!d.ok){
@@ -413,10 +423,11 @@ function WeeklyCalendar(p){
         <div style={{fontSize:16,fontWeight:600,color:M.onSurf}}>주간 상담 일정</div>
         <div style={{display:"flex",alignItems:"center",gap:12}}>
           {slackSt==="idle"&&<button onClick={function(){setSlackSt("confirm");}} style={{padding:"4px 12px",borderRadius:6,border:"1px solid "+M.primary,background:M.primaryCont,color:M.primary,cursor:"pointer",fontSize:13,fontFamily:"'Noto Sans KR',system-ui,sans-serif"}}>슬랙에 미팅 일정 보내기</button>}
-          {slackSt==="confirm"&&<div style={{display:"flex",alignItems:"center",gap:6}}>
-            <span style={{fontSize:13,color:M.onSurfVar}}>채널에 게시할까요?</span>
-            <button onClick={sendToSlack} style={{padding:"4px 12px",borderRadius:6,border:"1px solid "+M.primary,background:M.primaryCont,color:M.primary,cursor:"pointer",fontSize:13,fontFamily:"'Noto Sans KR',system-ui,sans-serif"}}>확인</button>
-            <button onClick={function(){setSlackSt("idle");}} style={btnSt}>취소</button>
+          {slackSt==="confirm"&&<div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+            <span style={{fontSize:13,color:M.onSurfVar,whiteSpace:"nowrap"}}>채널에 게시할까요?</span>
+            <input value={threadUrl} onChange={function(e){setThreadUrl(e.target.value);}} placeholder="스레드 URL (선택)" style={{padding:"3px 8px",borderRadius:6,border:"1px solid "+M.outlineVar,background:M.surface,color:M.onSurf,fontSize:12,width:180,fontFamily:"inherit",outline:"none"}}/>
+            <button onClick={sendToSlack} style={{padding:"4px 12px",borderRadius:6,border:"1px solid "+M.primary,background:M.primaryCont,color:M.primary,cursor:"pointer",fontSize:13,fontFamily:"'Noto Sans KR',system-ui,sans-serif",whiteSpace:"nowrap"}}>확인</button>
+            <button onClick={function(){setSlackSt("idle");setThreadUrl("");}} style={btnSt}>취소</button>
           </div>}
           {slackSt==="sending"&&<span style={{fontSize:13,color:M.onSurfVar}}>⏳ 전송 중...</span>}
           {slackSt==="done"&&<span style={{fontSize:13,color:M.success}}>✓ 전송 완료</span>}
