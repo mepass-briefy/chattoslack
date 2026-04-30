@@ -30,7 +30,7 @@ function verifySlack(rawBody, headers) {
 }
 
 /* ── 가능한 슬롯 계산 ─────────────────────────────────────────  */
-const WORK_HOURS = [9, 10, 11, 13, 14, 15, 16]; // 12시 점심 제외
+const WORK_HOURS = [9, 10, 11, 13, 14, 15, 16, 17, 18, 19]; // 12시 점심 제외
 
 function getAvailableSlots(schedules) {
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -141,14 +141,17 @@ async function slackAPI(method, body) {
 
 async function dmRobin(text, blocks) {
   const robinId = ROBIN_UID();
-  if (!robinId) return;
+  if (!robinId) { console.log("[DM] ROBIN_USER_ID 미설정"); return; }
+  console.log("[DM] conversations.open →", robinId);
   const open = await slackAPI("conversations.open", { users: robinId });
+  console.log("[DM] open result:", JSON.stringify(open));
   if (!open.ok) return;
-  await slackAPI("chat.postMessage", {
+  const result = await slackAPI("chat.postMessage", {
     channel: open.channel.id,
     text,
     ...(blocks ? { blocks } : {})
   });
+  console.log("[DM] postMessage result:", result.ok, result.error || "");
 }
 
 /* ── Raw body 미들웨어 ───────────────────────────────────────── */
@@ -202,6 +205,7 @@ export function setupSlack(app) {
     try { payload = JSON.parse(req.body.payload); }
     catch { return res.sendStatus(400); }
 
+    console.log("[Interaction] type:", payload.type);
     if (payload.type !== "block_actions") return res.sendStatus(200);
 
     const action = payload.actions?.[0];
@@ -214,75 +218,46 @@ export function setupSlack(app) {
     const { date, hour } = slotData;
     const booker = payload.user;
 
-    // 모든 schedule:* 키에서 해당 슬롯 탐색
-    const allSchedules = kvScan("schedule:");
-    let targetKey = "schedule:local";
-    let schedules = [];
-    for (const { key, value } of allSchedules) {
-      if (!Array.isArray(value)) continue;
-      const hasSlot = value.some(s => s.date === date && parseInt(s.start) === hour);
-      if (hasSlot) { targetKey = key; schedules = value; break; }
-    }
-    if (!schedules.length) {
-      // fallback: 첫 번째 schedule:* 키 사용
-      const first = allSchedules.find(({ value }) => Array.isArray(value) && value.length);
-      if (first) { targetKey = first.key; schedules = first.value; }
+    // 중복 요청 체크
+    const requests = kvGet("slackRequests") || [];
+    if (requests.some(r => r.date === date && r.hour === hour && r.requesterId === booker.id)) {
+      return res.json({ replace_original: false, text: "⚠️ 이미 요청하신 시간입니다." });
     }
 
-    // 중복 예약 체크 (slackAvailable 슬롯 제외)
-    const conflict = schedules.find(s => s.date === date && parseInt(s.start) === hour && !s.slackAvailable);
-    if (conflict) {
-      return res.json({
-        response_action: "ephemeral",
-        text: "⚠️ 이미 예약된 시간입니다. 다른 시간을 선택해 주세요."
-      });
-    }
-
-    // slackAvailable 슬롯을 확정 예약으로 교체
-    const withoutSlot = schedules.filter(s => !(s.date === date && parseInt(s.start) === hour));
-    const entry = {
-      id: uid(),
-      date,
-      start: `${hour}:00`,
-      end:   `${hour + 1}:00`,
-      title: `${booker.real_name || booker.name}님과 미팅`,
-      customer_id: "",
-      note: `Slack 예약 (@${booker.name})`
+    // 요청 저장
+    const request = {
+      id: uid(), date, hour,
+      requesterId: booker.id,
+      requesterName: booker.real_name || booker.name,
+      requesterUsername: booker.name,
+      requestedAt: new Date().toISOString()
     };
-    kvSet(targetKey, [...withoutSlot, entry]);
+    kvSet("slackRequests", [...requests, request]);
 
-    // 로빈에게 DM
+    // 로빈에게 새 요청 DM 알림
     await dmRobin(
-      `📅 미팅 확정: ${fmtDay(date)} ${hour}:00–${hour + 1}:00 / ${booker.real_name || booker.name}`,
-      [
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: [
-              `📅 *미팅이 확정되었습니다!*`,
-              `> 예약자: *${booker.real_name || booker.name}* (@${booker.name})`,
-              `> 일시:　　*${fmtDay(date)} ${hour}:00 – ${hour + 1}:00*`
-            ].join("\n")
-          }
-        },
-        {
-          type: "actions",
-          elements: [{
-            type: "button",
-            text: { type: "plain_text", text: "CRM에서 확인하기", emoji: true },
-            url: "http://localhost:4321",
-            action_id: "open_crm"
-          }]
+      `📬 새 미팅 요청: ${fmtDay(date)} ${hour}:00–${hour + 1}:00 / ${request.requesterName}`,
+      [{
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: [
+            `📬 *새 미팅 요청이 들어왔습니다*`,
+            `> 요청자: *${request.requesterName}* (@${request.requesterUsername})`,
+            `> 일시:　　*${fmtDay(date)} ${hour}:00 – ${hour + 1}:00*`,
+            `CRM에서 확인 후 확정해 주세요.`
+          ].join("\n")
         }
-      ]
+      }, {
+        type: "actions",
+        elements: [{ type: "button", text: { type: "plain_text", text: "CRM에서 확인하기", emoji: true }, url: "http://localhost:4321", action_id: "open_crm" }]
+      }]
     );
 
-    // 원본 메시지를 확정 상태로 업데이트
+    // 요청자에게 ephemeral 응답
     res.json({
-      replace_original: true,
-      text: `미팅 확정: ${fmtDay(date)} ${hour}:00–${hour + 1}:00`,
-      blocks: confirmedBlocks(booker, date, hour)
+      replace_original: false,
+      text: `✅ 요청되었습니다! *${fmtDay(date)} ${hour}:00 – ${hour + 1}:00* 미팅을 요청했습니다. Robin이 확인 후 확정 연락 드립니다.`
     });
   });
 
@@ -295,8 +270,66 @@ async function sendDM(userId, text, blocks) {
   return slackAPI("chat.postMessage", { channel: open.channel.id, text, ...(blocks ? { blocks } : {}) });
 }
 
-/* ── CRM 프론트엔드 → Slack 채널/DM 전송 (express.json 이후 등록) ── */
+/* ── CRM 프론트엔드 API (express.json 이후 등록) ──────────────── */
 export function setupSlackSend(app) {
+
+  /* 요청 목록 조회 */
+  app.get("/api/slack/requests", (req, res) => {
+    const all = kvGet("slackRequests") || [];
+    const { date, hour } = req.query;
+    if (date && hour !== undefined) {
+      return res.json({ requests: all.filter(r => r.date === date && r.hour === parseInt(hour)) });
+    }
+    res.json({ requests: all });
+  });
+
+  /* 요청 확정 */
+  app.post("/api/slack/confirm", async (req, res) => {
+    const { requestId, scheduleKey } = req.body;
+    const all = kvGet("slackRequests") || [];
+    const req_ = all.find(r => r.id === requestId);
+    if (!req_) return res.status(404).json({ error: "요청을 찾을 수 없습니다." });
+
+    const { date, hour, requesterId, requesterName, requesterUsername } = req_;
+
+    // slackAvailable 슬롯 → 확정 예약으로 교체
+    const allScheds = kvScan("schedule:");
+    let targetKey = scheduleKey || "schedule:local";
+    let schedules = [];
+    for (const { key, value } of allScheds) {
+      if (!Array.isArray(value)) continue;
+      if (value.some(s => s.date === date && parseInt(s.start) === hour && s.slackAvailable)) {
+        targetKey = key; schedules = value; break;
+      }
+    }
+    if (!schedules.length) {
+      const first = allScheds.find(({ value }) => Array.isArray(value) && value.length);
+      if (first) { targetKey = first.key; schedules = first.value; }
+    }
+
+    const entry = {
+      id: uid(), date,
+      start: `${hour}:00`, end: `${hour + 1}:00`,
+      title: `${requesterName}님과 미팅`,
+      customer_id: "", note: `Slack 요청 확정 (@${requesterUsername})`
+    };
+    kvSet(targetKey, [...schedules.filter(s => !(s.date === date && parseInt(s.start) === hour)), entry]);
+
+    // 해당 슬롯 요청 전체 제거
+    kvSet("slackRequests", all.filter(r => !(r.date === date && r.hour === hour)));
+
+    // 확정자에게 DM
+    if (requesterId && BOT_TOKEN()) {
+      await sendDM(requesterId,
+        `✅ 미팅이 확정되었습니다! ${fmtDay(date)} ${hour}:00 – ${hour + 1}:00`,
+        [{ type: "section", text: { type: "mrkdwn",
+          text: `✅ *미팅이 확정되었습니다!*\n> 일시: *${fmtDay(date)} ${hour}:00 – ${hour + 1}:00*\n캘린더에 추가해 주세요.`
+        }}]
+      );
+    }
+
+    res.json({ ok: true });
+  });
   app.post("/api/slack/send-availability", async (req, res) => {
     if (!BOT_TOKEN())
       return res.status(500).json({ error: "SLACK_BOT_TOKEN이 설정되지 않았습니다." });

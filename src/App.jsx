@@ -364,13 +364,20 @@ function WeeklyCalendar(p){
   var [af,setAF]=useState({title:"",customer_id:"",note:"",slackAvailable:false});
   var [viewSlot,setViewSlot]=useState(null);
   var [typeSelect,setTypeSelect]=useState(null);
+  var [slackRequests,setSlackRequests]=useState([]);
+  var [slotRequests,setSlotRequests]=useState([]);
   var [slackSt,setSlackSt]=useState("idle");
   var [slackErr,setSlackErr]=useState("");
   var [channelId,setChannelId]=useState("");
   var [threadUrl,setThreadUrl]=useState("");
   var [dmInput,setDmInput]=useState("");
   useEffect(function(){(async function(){var s=await store.get(SK,[]); setScheds(s); setLoaded(true);})();}, [user.id]);
-  var HOURS=[9,10,11,12,13,14,15,16];
+  useEffect(function(){(async function(){var r=await fetch("/api/slack/requests"); var d=await r.json(); setSlackRequests(d.requests||[]);})();}, []);
+  useEffect(function(){
+    if(!viewSlot||!viewSlot.slackAvailable){setSlotRequests([]); return;}
+    (async function(){var r=await fetch("/api/slack/requests?date="+viewSlot.date+"&hour="+parseInt(viewSlot.start)); var d=await r.json(); setSlotRequests(d.requests||[]);})();
+  }, [viewSlot]);
+  var HOURS=[9,10,11,12,13,14,15,16,17,18,19];
   var wDays=[0,1,2,3,4].map(function(i){return addDays(weekStart,i);});
   var todayMs=new Date().setHours(0,0,0,0); var nowH=new Date().getHours();
   function isPast(date,hour){var dm=new Date(date).setHours(0,0,0,0); if(dm<todayMs)return true; if(dm===todayMs&&hour<nowH)return true; return false;}
@@ -411,6 +418,14 @@ function WeeklyCalendar(p){
       setSlackSt("done"); setTimeout(function(){setSlackSt("idle");},3000);
     }catch(e){setSlackErr(e.message); setSlackSt("error"); setTimeout(function(){setSlackSt("idle");setSlackErr("");},5000);}
   }
+  async function confirmRequest(requestId){
+    var r=await fetch("/api/slack/confirm",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({requestId,scheduleKey:SK})});
+    var d=await r.json();
+    if(d.ok){
+      var s=await store.get(SK,[]); setScheds(s); setViewSlot(null); setSlotRequests([]);
+      var rr=await fetch("/api/slack/requests"); var dd=await rr.json(); setSlackRequests(dd.requests||[]);
+    }
+  }
   function openGuestAdd(){
     setAddSlot(typeSelect); setTypeSelect(null);
     setAF({title:"",customer_id:"",note:"",slackAvailable:false}); setShowAdd(true);
@@ -431,7 +446,7 @@ function WeeklyCalendar(p){
             <span style={{fontSize:13,color:M.onSurfVar,whiteSpace:"nowrap"}}>전송 대상:</span>
             <input value={threadUrl} onChange={function(e){setThreadUrl(e.target.value);}} placeholder="스레드 URL (선택)" style={{padding:"3px 8px",borderRadius:6,border:"1px solid "+M.outlineVar,background:M.surface,color:M.onSurf,fontSize:12,width:160,fontFamily:"inherit",outline:"none"}}/>
             <input value={dmInput} onChange={function(e){setDmInput(e.target.value);}} placeholder="DM 유저 ID (U…)" style={{padding:"3px 8px",borderRadius:6,border:"1px solid "+M.outlineVar,background:M.surface,color:M.onSurf,fontSize:12,width:140,fontFamily:"inherit",outline:"none"}}/>
-            <button onClick={sendToSlack} style={{padding:"4px 12px",borderRadius:6,border:"1px solid "+M.primary,background:M.primaryCont,color:M.primary,cursor:"pointer",fontSize:13,fontFamily:"'Noto Sans KR',system-ui,sans-serif",whiteSpace:"nowrap"}}>확인</button>
+            <button onClick={function(){sendToSlack();}} style={{padding:"4px 12px",borderRadius:6,border:"1px solid "+M.primary,background:M.primaryCont,color:M.primary,cursor:"pointer",fontSize:13,fontFamily:"'Noto Sans KR',system-ui,sans-serif",whiteSpace:"nowrap"}}>확인</button>
             <button onClick={function(){setSlackSt("idle");setThreadUrl("");setDmInput("");}} style={btnSt}>취소</button>
           </div>}
           {slackSt==="sending"&&<span style={{fontSize:13,color:M.onSurfVar}}>⏳ 전송 중...</span>}
@@ -472,10 +487,11 @@ function WeeklyCalendar(p){
                   if(past) return <div key={i} style={{height:36,borderRadius:5,background:M.scHst,opacity:.35}}/>;
                   if(slot){
                     if(slot.slackAvailable){
+                      var reqCnt=slackRequests.filter(function(r){return r.date===slot.date&&r.hour===parseInt(slot.start);}).length;
                       return <div key={i} onClick={function(){setViewSlot(slot);}}
                         style={{height:36,borderRadius:5,background:M.warnCont,border:"1px solid "+M.warnBorder,cursor:"pointer",padding:"0 6px",display:"flex",alignItems:"center",gap:4,overflow:"hidden",transition:"background .2s cubic-bezier(.2,0,0,1)"}}>
                         <span style={{fontSize:10,color:M.warn,flexShrink:0}}>💬</span>
-                        <span style={{fontSize:11,fontWeight:600,color:M.warn,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>슬랙</span>
+                        <span style={{fontSize:11,fontWeight:600,color:M.warn,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{reqCnt>0?reqCnt+"건 요청":"슬랙"}</span>
                       </div>;
                     }
                     return <div key={i} onClick={function(){setViewSlot(slot);}}
@@ -513,13 +529,31 @@ function WeeklyCalendar(p){
         {!af.slackAvailable&&<Sel label="고객사 연결 (선택)" value={af.customer_id} onChange={function(e){setAf("customer_id",e.target.value);}} options={customers.map(function(c){return{value:c.id,label:c.company};})} placeholder="선택 안함"/>}
         <Inp label="메모" value={af.note} onChange={function(e){setAf("note",e.target.value);}} multiline rows={2} placeholder="참고사항" mb={0}/>
       </Modal>
-      <Modal open={!!viewSlot} title="일정 상세" onClose={function(){setViewSlot(null);}} maxWidth={360}
+      <Modal open={!!viewSlot} title={viewSlot&&viewSlot.slackAvailable?"슬랙 미팅 요청":"일정 상세"} onClose={function(){setViewSlot(null);}} maxWidth={380}
         footer={<><Btn variant="danger" size="sm" onClick={function(){if(viewSlot)delSlot(viewSlot.id);}}>삭제</Btn><Btn variant="ghost" size="sm" onClick={function(){setViewSlot(null);}}>닫기</Btn></>}>
         {viewSlot&&<div>
-          <div style={{fontSize:18,fontWeight:600,color:M.onSurf,marginBottom:8}}>{viewSlot.title}</div>
-          <div style={{fontSize:14,color:M.onSurfVar,marginBottom:4}}>{viewSlot.date} · {viewSlot.start} – {viewSlot.end}</div>
-          {viewSlot.customer_id&&<div style={{fontSize:14,color:M.onSurfVar,marginBottom:4}}>고객사: {(customers.find(function(c){return c.id===viewSlot.customer_id;})||{}).company||""}</div>}
-          {viewSlot.note&&<div style={{marginTop:10,padding:"10px 12px",borderRadius:8,background:M.scHst,fontSize:14,color:M.onSurfVar,lineHeight:1.7}}>{viewSlot.note}</div>}
+          <div style={{fontSize:15,fontWeight:600,color:M.onSurf,marginBottom:6}}>{viewSlot.date} · {viewSlot.start} – {viewSlot.end}</div>
+          {viewSlot.slackAvailable?(
+            <div>
+              <div style={{fontSize:13,color:M.onSurfVar,marginBottom:12}}>요청 {slotRequests.length}건</div>
+              {slotRequests.length===0&&<div style={{fontSize:13,color:M.onSurfVar,padding:"12px 0"}}>아직 요청이 없습니다.</div>}
+              {slotRequests.map(function(req){return(
+                <div key={req.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 10px",marginBottom:6,borderRadius:8,background:M.scHst}}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:600,color:M.onSurf}}>{req.requesterName}</div>
+                    <div style={{fontSize:11,color:M.onSurfVar}}>@{req.requesterUsername}</div>
+                  </div>
+                  <Btn size="sm" onClick={function(){confirmRequest(req.id);}}>확정</Btn>
+                </div>
+              );})}
+            </div>
+          ):(
+            <div>
+              <div style={{fontSize:16,fontWeight:600,color:M.onSurf,marginBottom:6}}>{viewSlot.title}</div>
+              {viewSlot.customer_id&&<div style={{fontSize:14,color:M.onSurfVar,marginBottom:4}}>고객사: {(customers.find(function(c){return c.id===viewSlot.customer_id;})||{}).company||""}</div>}
+              {viewSlot.note&&<div style={{marginTop:10,padding:"10px 12px",borderRadius:8,background:M.scHst,fontSize:14,color:M.onSurfVar,lineHeight:1.7}}>{viewSlot.note}</div>}
+            </div>
+          )}
         </div>}
       </Modal>
     </div>
