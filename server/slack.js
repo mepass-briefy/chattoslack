@@ -331,17 +331,31 @@ export function setupSlackSend(app) {
     };
     kvSet(targetKey, [...schedules.filter(s => !(s.date === date && parseInt(s.start) === hour)), entry]);
 
+    // 같은 슬롯의 다른 요청자 목록 (확정되지 않은 사람들)
+    const otherRequests = all.filter(r => r.date === date && r.hour === hour && r.id !== requestId);
+
     // 해당 슬롯 요청 전체 제거
     kvSet("slackRequests", all.filter(r => !(r.date === date && r.hour === hour)));
 
-    // 확정자에게 DM
-    if (requesterId && BOT_TOKEN()) {
+    if (BOT_TOKEN()) {
+      // 확정자에게 DM
       await sendDM(requesterId,
         `✅ 미팅이 확정되었습니다! ${fmtDay(date)} ${hour}:00 – ${hour + 1}:00`,
         [{ type: "section", text: { type: "mrkdwn",
-          text: `✅ *미팅이 확정되었습니다!*\n> 일시: *${fmtDay(date)} ${hour}:00 – ${hour + 1}:00*\n캘린더에 추가해 주세요.`
+          text: `✅ *미팅이 확정되었습니다!*\n> 일시: *${fmtDay(date)} ${hour}:00 – ${hour + 1}:00*\n\n로빈이 미팅을 확정했습니다. 캘린더에 추가해 주세요! 😊`
         }}]
       );
+
+      // 미확정자들에게 DM
+      for (const other of otherRequests) {
+        if (!other.requesterId) continue;
+        await sendDM(other.requesterId,
+          `Oops! ${fmtDay(date)} ${hour}:00 미팅 확정 안내`,
+          [{ type: "section", text: { type: "mrkdwn",
+            text: `Oops! 😅 먼저 등록한 사용자가 있어서 *${fmtDay(date)} ${hour}:00 – ${hour + 1}:00* 미팅 확정이 안됐어요.\n\n다른 시간으로 다시 신청해 주시면 로빈이 확인할게요!`
+          }}]
+        );
+      }
     }
 
     res.json({ ok: true });
