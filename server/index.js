@@ -4,10 +4,11 @@ import { readFileSync, existsSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 import { kvGet, kvSet, kvDel } from "./db.js";
+import { setupSlack } from "./slack.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// .env 로드 (dotenv 미사용 — 직접 파싱)
+// .env 로드
 const envPath = join(__dirname, "..", ".env");
 if (existsSync(envPath)) {
   readFileSync(envPath, "utf8")
@@ -23,6 +24,11 @@ const PORT = IS_PROD ? 4321 : 4322;
 
 const app = express();
 app.use(cors());
+
+/* ── Slack 라우트: raw body 필요하므로 JSON 미들웨어 전에 등록 ── */
+setupSlack(app);
+
+/* ── 나머지 라우트: JSON 파싱 ────────────────────────────────── */
 app.use(express.json({ limit: "10mb" }));
 
 /* ── KV Storage API ──────────────────────────────────────────── */
@@ -48,7 +54,6 @@ app.post("/api/ai", async (req, res) => {
   if (!apiKey || apiKey === "여기에_API_키_입력") {
     return res.status(500).json({ error: ".env 파일에 ANTHROPIC_API_KEY를 설정해 주세요." });
   }
-
   const { userMsg, sysMsg, maxTok, webSearch } = req.body;
   const body = {
     model: "claude-sonnet-4-6",
@@ -57,7 +62,6 @@ app.post("/api/ai", async (req, res) => {
   };
   if (sysMsg) body.system = sysMsg;
   if (webSearch) body.tools = [{ type: "web_search_20250305", name: "web_search" }];
-
   try {
     const upstream = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -91,4 +95,5 @@ if (IS_PROD) {
 app.listen(PORT, () => {
   console.log(`GRIDGE CRM server → http://localhost:${PORT}`);
   if (!IS_PROD) console.log("  API proxy: Vite 4321 → Express 4322");
+  if (process.env.SLACK_BOT_TOKEN) console.log("  Slack bot: 활성화됨");
 });

@@ -1,0 +1,97 @@
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* ── App shell ── */
+.app-root {
+  display: flex;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
+}
+
+.app-sidebar {
+  width: 160px;
+  flex-shrink: 0;
+  transition: width 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.app-content {
+  flex: 1 1 0%;
+  min-width: 0;
+  width: 0; /* forces flex to not use content-size as minimum */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.nav-label {
+  transition: opacity 0.15s, max-width 0.2s;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* ── Page scroll wrapper ── */
+.page-scroll {
+  overflow-y: auto;
+  flex: 1;
+  width: 100%;
+  padding: 24px 28px;
+  box-sizing: border-box;
+}
+
+/* ── Home grids ── */
+.home-row1 {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 16px;
+  margin-bottom: 16px;
+  align-items: stretch;
+  width: 100%;
+}
+
+.home-row2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+  width: 100%;
+}
+
+/* ── Calendar ── */
+.cal-scroll {
+  overflow-x: auto;
+  width: 100%;
+}
+
+.cal-inner {
+  min-width: 480px;
+  width: 100%;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: 44px repeat(5, 1fr);
+  gap: 3px;
+  width: 100%;
+}
+
+/* ── Breakpoints ── */
+@media (max-width: 1200px) {
+  .home-row1 { grid-template-columns: 1fr 1.6fr; }
+}
+
+@media (max-width: 960px) {
+  .app-sidebar { width: 56px; }
+  .nav-label { opacity: 0; max-width: 0; pointer-events: none; }
+  .home-row1 { grid-template-columns: 1fr; }
+  .home-row2 { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 600px) {
+  .app-sidebar { display: none; }
+  .page-scroll { padding: 16px; }
+}

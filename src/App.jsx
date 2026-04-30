@@ -285,12 +285,12 @@ function Sidebar(p){
         style={{width:"100%",height:44,border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:10,padding:"0 12px",borderRadius:8,background:"transparent",color:active?indicatorColor:M.onSurfVar,boxSizing:"border-box",position:"relative",fontFamily:"'Noto Sans KR',system-ui,sans-serif"}}>
         {active&&<span style={{position:"absolute",inset:0,borderRadius:8,background:indicatorBg,transition:"background .2s cubic-bezier(.2,0,0,1)"}}/>}
         <span style={{position:"relative",display:"flex",alignItems:"center",flexShrink:0}}>{np.icon}</span>
-        {np.label&&<span style={{position:"relative",fontSize:14,fontWeight:active?600:400,letterSpacing:"-.01em"}}>{np.label}</span>}
+        {np.label&&<span className="nav-label" style={{position:"relative",fontSize:14,fontWeight:active?600:400,letterSpacing:"-.01em"}}>{np.label}</span>}
       </button>
     );
   }
   return(
-    <div style={{width:160,flexShrink:0,background:isDark?M.surface:"#FFFFFF",borderRight:"1px solid "+M.outlineVar,display:"flex",flexDirection:"column",padding:"12px 0",zIndex:10,transition:"background .2s cubic-bezier(.2,0,0,1),border-color .2s"}}>
+    <div className="app-sidebar" style={{background:isDark?M.surface:"#FFFFFF",borderRight:"1px solid "+M.outlineVar,display:"flex",flexDirection:"column",padding:"12px 0",zIndex:10,transition:"background .2s cubic-bezier(.2,0,0,1),border-color .2s,width .2s"}}>
       <div style={{width:36,height:36,borderRadius:10,background:isDark?M.primaryCont:M.primary,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px",flexShrink:0}}>
         <span style={{fontSize:16,fontWeight:700,color:isDark?M.primary:M.onPrimary}}>G</span>
       </div>
@@ -363,6 +363,8 @@ function WeeklyCalendar(p){
   var [showAdd,setShowAdd]=useState(false); var [addSlot,setAddSlot]=useState(null);
   var [af,setAF]=useState({title:"",customer_id:"",note:""});
   var [viewSlot,setViewSlot]=useState(null);
+  var [slackSt,setSlackSt]=useState("idle");
+  var [slackErr,setSlackErr]=useState("");
   useEffect(function(){(async function(){var s=await store.get(SK,[]); setScheds(s); setLoaded(true);})();}, [user.id]);
   var HOURS=[9,10,11,12,13,14,15,16];
   var wDays=[0,1,2,3,4].map(function(i){return addDays(weekStart,i);});
@@ -379,21 +381,41 @@ function WeeklyCalendar(p){
     setShowAdd(false); setAF({title:"",customer_id:"",note:""});
   }
   async function delSlot(id){var upd=scheds.filter(function(s){return s.id!==id;}); await store.set(SK,upd); setScheds(upd); setViewSlot(null);}
+  async function sendToSlack(){
+    setSlackSt("sending");
+    try{
+      var r=await fetch("/api/slack/send-availability",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({})});
+      var d=await r.json();
+      if(!d.ok) throw new Error(d.error||d.message||"전송 실패");
+      setSlackSt("done"); setTimeout(function(){setSlackSt("idle");},3000);
+    }catch(e){setSlackErr(e.message); setSlackSt("error"); setTimeout(function(){setSlackSt("idle");setSlackErr("");},5000);}
+  }
   var DAY_KO=["월","화","수","목","금"];
   var btnSt={padding:"4px 10px",borderRadius:6,border:"1px solid "+M.outlineVar,background:"transparent",color:M.onSurfVar,cursor:"pointer",fontSize:14,fontFamily:"'Noto Sans KR',system-ui,sans-serif"};
   return(
     <div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
         <div style={{fontSize:16,fontWeight:600,color:M.onSurf}}>주간 상담 일정</div>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <button onClick={function(){setWeekStart(function(w){return addDays(w,-7);});}} style={btnSt}>{"<"}</button>
-          <span style={{fontSize:13,color:M.onSurfVar,minWidth:150,textAlign:"center"}}>{fmtMD(wDays[0])} – {fmtMD(wDays[4])} {weekStart.getFullYear()}</span>
-          <button onClick={function(){setWeekStart(function(w){return addDays(w,7);});}} style={btnSt}>{">"}</button>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          {slackSt==="idle"&&<button onClick={function(){setSlackSt("confirm");}} style={{padding:"4px 12px",borderRadius:6,border:"1px solid "+M.primary,background:M.primaryCont,color:M.primary,cursor:"pointer",fontSize:13,fontFamily:"'Noto Sans KR',system-ui,sans-serif"}}>슬랙에 미팅 일정 보내기</button>}
+          {slackSt==="confirm"&&<div style={{display:"flex",alignItems:"center",gap:6}}>
+            <span style={{fontSize:13,color:M.onSurfVar}}>채널에 게시할까요?</span>
+            <button onClick={sendToSlack} style={{padding:"4px 12px",borderRadius:6,border:"1px solid "+M.primary,background:M.primaryCont,color:M.primary,cursor:"pointer",fontSize:13,fontFamily:"'Noto Sans KR',system-ui,sans-serif"}}>확인</button>
+            <button onClick={function(){setSlackSt("idle");}} style={btnSt}>취소</button>
+          </div>}
+          {slackSt==="sending"&&<span style={{fontSize:13,color:M.onSurfVar}}>⏳ 전송 중...</span>}
+          {slackSt==="done"&&<span style={{fontSize:13,color:M.success}}>✓ 전송 완료</span>}
+          {slackSt==="error"&&<span style={{fontSize:13,color:M.error,maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>오류: {slackErr}</span>}
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <button onClick={function(){setWeekStart(function(w){return addDays(w,-7);});}} style={btnSt}>{"<"}</button>
+            <span style={{fontSize:13,color:M.onSurfVar,minWidth:150,textAlign:"center"}}>{fmtMD(wDays[0])} – {fmtMD(wDays[4])} {weekStart.getFullYear()}</span>
+            <button onClick={function(){setWeekStart(function(w){return addDays(w,7);});}} style={btnSt}>{">"}</button>
+          </div>
         </div>
       </div>
-      <div style={{overflowX:"auto"}}>
-        <div style={{minWidth:480}}>
-          <div style={{display:"grid",gridTemplateColumns:"44px repeat(5,1fr)",gap:3,marginBottom:5}}>
+      <div className="cal-scroll">
+        <div className="cal-inner" style={{minWidth:480}}>
+          <div className="cal-grid" style={{marginBottom:5}}>
             <div/>
             {wDays.map(function(d,i){var iT=isToday(d); return(
               <div key={i} style={{textAlign:"center",padding:"5px 0",borderRadius:6,background:iT?M.primaryCont:"transparent",transition:"background .2s cubic-bezier(.2,0,0,1)"}}>
@@ -405,7 +427,7 @@ function WeeklyCalendar(p){
           {HOURS.map(function(hour){
             var isLunch=hour===12;
             return(
-              <div key={hour} style={{display:"grid",gridTemplateColumns:"44px repeat(5,1fr)",gap:3,marginBottom:3}}>
+              <div key={hour} className="cal-grid" style={{marginBottom:3}}>
                 <div style={{fontSize:12,color:M.onSurfVar,textAlign:"right",paddingRight:8,paddingTop:10,lineHeight:1}}>{hour}:00</div>
                 {wDays.map(function(d,i){
                   if(isLunch) return <div key={i} style={{height:36,borderRadius:5,background:M.scHst,display:"flex",alignItems:"center",justifyContent:"center",transition:"background .2s cubic-bezier(.2,0,0,1)"}}><span style={{fontSize:11,color:M.onSurfVar}}>점심</span></div>;
@@ -489,7 +511,7 @@ function HomePage(p){
   var STATUS_ORDER=["신규접수","RM배정","브리핑완료","미팅완료","RFP","계약성사","이탈"];
 
   return(
-    <div style={{overflowY:"auto",flex:1,padding:"24px 28px",animation:"g-fade .2s ease"}}>
+    <div className="page-scroll" style={{animation:"g-fade .2s ease"}}>
 
       {/* 인사 + 요약 */}
       <div style={{marginBottom:20}}>
@@ -501,7 +523,7 @@ function HomePage(p){
       </div>
 
       {/* Row 1: [바로가기+파이프라인] | [주간 일정] */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 2fr",gap:16,marginBottom:16,alignItems:"stretch"}}>
+      <div className="home-row1">
 
         {/* 왼쪽: 바로가기 2×2 → 파이프라인 → 즉시확인 */}
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -558,7 +580,7 @@ function HomePage(p){
       </div>
 
       {/* Row 2: 이번 주 핵심 액션 | 진행 중 프로젝트 */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,alignItems:"start"}}>
+      <div className="home-row2">
 
         {/* 이번 주 핵심 액션 */}
         <Card>
@@ -2412,9 +2434,7 @@ export default function App(){
   return(
     <ThemeCtx.Provider value={isDark}>
       <Ctx.Provider value={ctx}>
-        <div style={{display:"flex",height:"100vh",background:M.bg,overflow:"hidden",fontFamily:"'Noto Sans KR',system-ui,sans-serif",color:M.onSurf,WebkitFontSmoothing:"antialiased",
-          /* 깜박임 방지: background/color transition */
-          transition:"background .15s,color .15s"}}>
+        <div className="app-root" style={{background:M.bg,fontFamily:"'Noto Sans KR',system-ui,sans-serif",color:M.onSurf,WebkitFontSmoothing:"antialiased",transition:"background .15s,color .15s"}}>
           <style>{`
             @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap');
             @keyframes g-spin{to{transform:rotate(360deg)}}
@@ -2452,9 +2472,10 @@ export default function App(){
             table{border-spacing:0}
             a{color:inherit;text-decoration:none}
             button{cursor:pointer}
+
           `}</style>
           <Sidebar page={page} setPage={setPage} onToggleTheme={toggleTheme} seed={seed}/>
-          <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",transition:"background .2s cubic-bezier(.2,0,0,1)"}}>{pageEl}</div>
+          <div className="app-content" style={{transition:"background .2s cubic-bezier(.2,0,0,1)"}}>{pageEl}</div>
         </div>
       </Ctx.Provider>
     </ThemeCtx.Provider>
